@@ -292,16 +292,24 @@ class ConceptGraphView(QGraphicsView):
     def _fit(self) -> None:
         self.fitInView(self._scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
-    # 滚轮缩放，限制在合理范围
+    # 滚轮缩放，把结果夹在合理区间，避免大图适配后永远放不大
     def wheelEvent(self, event: Any) -> None:
         delta = event.angleDelta().y()
         if delta == 0:
             return
 
+        current = self.transform().m11()
+        if current <= 0:
+            return
+
         factor = 1.15 if delta > 0 else 1.0 / 1.15
-        target = self.transform().m11() * factor
-        if MIN_SCALE <= target <= MAX_SCALE:
-            self.scale(factor, factor)
+        target = current * factor
+        if target < MIN_SCALE:
+            factor = MIN_SCALE / current
+        elif target > MAX_SCALE:
+            factor = MAX_SCALE / current
+
+        self.scale(factor, factor)
         event.accept()
 
     # 双击回到适配窗口

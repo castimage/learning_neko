@@ -175,7 +175,7 @@ def _replace_media(
                 if image is not None and not image.isNull():
                     caption = str(item.get('caption') or alt or media_id)
                     url = image_to_data_url(image)
-                    return f'![{caption}]({url})'
+                    return f'![{caption}]({url})　[查看详细图](chart:{media_id})'
             # 绘制规格缺失，退化成图注文字
             caption = str(item.get('caption') or alt or media_id)
             return f'**【图】{caption}**'

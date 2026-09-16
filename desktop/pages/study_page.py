@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from PyQt6.QtCore import Qt, QUrl, pyqtSignal
-from PyQt6.QtGui import QDesktopServices, QTextDocument
+from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
+from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -19,8 +19,10 @@ from PyQt6.QtWidgets import (
 )
 
 from desktop.api.client import LearningClient
+from desktop.pages.report_dialog import show_report
 from desktop.workers import run_async
 from desktop.widgets.chat_panel import ChatPanel
+from desktop.widgets.chart_view import ChartView
 from desktop.widgets.graph_view import ConceptGraphView
 from desktop.widgets.markdown_renderer import render_markdown
 from desktop.widgets.media_assets import image_to_data_url, visualization_to_image
@@ -63,6 +65,14 @@ class StudyPage(QWidget):
         self._bundles: dict[int, dict[str, Any]] = {}
         # 正在从后端回填的分节，避免重复发请求
         self._loading: set[int] = set()
+        # 例题面板最近装载的题集签名，用来避免重渲染时清空已填答案
+        self._examples_key: tuple[Any, ...] | None = None
+        # 分节正文渲染后的 HTML 缓存，避免重复跑公式与关系图出图
+        self._html_cache: dict[tuple[Any, ...], str] = {}
+        # 右栏宽度重分配是否已挂起等待布局
+        self._rebalance_pending = False
+        # 交互折线图当前对应的分节，用来在切分节时清空
+        self._chart_row: int | None = None
         self._build_ui()
         self._connect_signals()
 
@@ -76,7 +86,9 @@ class StudyPage(QWidget):
 
         self.material_box = QTextBrowser()
         self.material_box.setReadOnly(True)
-        self.material_box.setOpenExternalLinks(False)   # 链接改由 anchorClicked 统一处理
+        # 链接一律不自动导航，只发 anchorClicked；否则点自定义协议会把正文清空
+        self.material_box.setOpenLinks(False)
+        self.material_box.setOpenExternalLinks(False)
         self.material_box.setPlaceholderText('左侧选择分节后显示资料')
         # 控件自身背景，白底深字
         self.material_box.setStyleSheet(
@@ -87,8 +99,9 @@ class StudyPage(QWidget):
         self.outline_toggle_btn = QPushButton('折叠大纲')
         self.outline_toggle_btn.setCheckable(True)
 
-        # 三类详情内容，各自放在可开关的右栏里
+        # 四类详情内容，各自放在可开关的右栏里
         self.graph_view = ConceptGraphView()
+        self.chart_view = ChartView()
         self.chat_panel = ChatPanel(self._client)
         self.examples_panel = QuizPanel(
             self._client.check_examples,
@@ -108,18 +121,28 @@ class StudyPage(QWidget):
         self.graph_panel, graph_close = self._build_detail_column(
             '知识点关系图', self.graph_view, hint='滚轮缩放 · 拖动节点调整 · 空白处拖动平移'
         )
+        self.chart_panel, chart_close = self._build_detail_column(
+            '折线图', self.chart_view, hint='滚轮缩放 · 空白处拖动平移'
+        )
         self.qa_column, qa_close = self._build_detail_column('答疑', self.chat_panel)
         self.examples_column, examples_close = self._build_detail_column('例题', examples_body)
 
         self.qa_toggle_btn = QPushButton('答疑')
         self.examples_toggle_btn = QPushButton('例题')
         self.graph_toggle_btn = QPushButton('关系图')
-        for button in (self.qa_toggle_btn, self.examples_toggle_btn, self.graph_toggle_btn):
+        self.chart_toggle_btn = QPushButton('折线图')
+        for button in (
+            self.qa_toggle_btn,
+            self.examples_toggle_btn,
+            self.graph_toggle_btn,
+            self.chart_toggle_btn
+        ):
             button.setCheckable(True)
 
         self._bind_column(self.qa_toggle_btn, self.qa_column, qa_close)
         self._bind_column(self.examples_toggle_btn, self.examples_column, examples_close)
         self._bind_column(self.graph_toggle_btn, self.graph_panel, graph_close)
+        self._bind_column(self.chart_toggle_btn, self.chart_panel, chart_close)
 
         self.generate_btn = QPushButton('生成本节资料')
         self.generate_btn.setEnabled(False)
@@ -135,11 +158,16 @@ class StudyPage(QWidget):
         self.complete_btn = QPushButton('完成学习')
         self.complete_btn.setEnabled(False)
 
+        # 只有学完之后才需要看报告
+        self.report_btn = QPushButton('查看学习报告')
+        self.report_btn.hide()
+
         # 主区横向：大纲 / 正文 / 三栏可开关的详情
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.addWidget(self.outline_list)
         self.main_splitter.addWidget(self.material_box)
         self.main_splitter.addWidget(self.graph_panel)
+        self.main_splitter.addWidget(self.chart_panel)
         self.main_splitter.addWidget(self.qa_column)
         self.main_splitter.addWidget(self.examples_column)
         self.main_splitter.setStretchFactor(0, 1)
@@ -154,10 +182,12 @@ class StudyPage(QWidget):
         toolbar.addWidget(self.outline_toggle_btn)
         toolbar.addWidget(self.generate_btn)
         toolbar.addWidget(self.complete_btn)
+        toolbar.addWidget(self.report_btn)
         toolbar.addWidget(self.progress, 1)
         toolbar.addWidget(self.qa_toggle_btn)
         toolbar.addWidget(self.examples_toggle_btn)
         toolbar.addWidget(self.graph_toggle_btn)
+        toolbar.addWidget(self.chart_toggle_btn)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -173,6 +203,7 @@ class StudyPage(QWidget):
         self.generate_btn.clicked.connect(self._on_generate_clicked)
         self.examples_regen_btn.clicked.connect(self._on_generate_clicked)
         self.complete_btn.clicked.connect(self._on_complete_clicked)
+        self.report_btn.clicked.connect(self._on_view_report)
         self.outline_toggle_btn.toggled.connect(self._on_toggle_outline)
         self.material_box.anchorClicked.connect(self._on_material_link)
 
@@ -227,12 +258,22 @@ class StudyPage(QWidget):
     def _rebalance_columns(self) -> None:
         width = self.main_splitter.width()
         if width <= 0:
+            # 控件还没布局出宽度，等下一轮事件循环再试
+            if not self._rebalance_pending:
+                self._rebalance_pending = True
+                QTimer.singleShot(0, self._retry_rebalance)
             return
 
+        self._rebalance_pending = False
         weights = [self._column_weight(self.main_splitter.widget(i))
                    for i in range(self.main_splitter.count())]
         total = sum(weights) or 1.0
         self.main_splitter.setSizes([int(width * weight / total) for weight in weights])
+
+    # 布局完成后的重试入口
+    def _retry_rebalance(self) -> None:
+        self._rebalance_pending = False
+        self._rebalance_columns()
 
     # 大纲占比较小，详情栏与正文等权
     def _column_weight(self, widget: QWidget) -> float:
@@ -242,12 +283,29 @@ class StudyPage(QWidget):
             return 0.5
         return 1.0
 
-    # 正文链接：graph 协议展开关系图栏，其余交给系统打开
+    # 正文链接：graph 打开关系图栏，chart 打开对应折线图，其余交给系统打开
     def _on_material_link(self, url: QUrl) -> None:
         if url.scheme() == 'graph':
             self.graph_toggle_btn.setChecked(True)
             return
+        if url.scheme() == 'chart':
+            self._show_chart(url.path())
+            return
         QDesktopServices.openUrl(url)
+
+    # 在折线图栏里渲染正文引用的那张图
+    def _show_chart(self, media_id: str) -> None:
+        bundle = self._bundles.get(self.outline_list.currentRow()) or {}
+        diagram: dict[str, Any] = {}
+        for item in (bundle.get('media') or []):
+            if isinstance(item, dict) and str(item.get('id')) == media_id:
+                spec = item.get('diagram')
+                if isinstance(spec, dict):
+                    diagram = spec
+                break
+
+        self.chart_view.render_chart(diagram)
+        self.chart_toggle_btn.setChecked(True)
 
     # 暴露当前会话 id，供主窗口「重新读取」使用
     def current_session_id(self) -> str:
@@ -265,6 +323,7 @@ class StudyPage(QWidget):
         }
         self._bundles.clear()
         self._loading.clear()
+        self._html_cache.clear()
 
         self.topic_label.setText(session.get('topic') or '未命名主题')
         self.phase_label.setText(
@@ -277,6 +336,8 @@ class StudyPage(QWidget):
         allowed = set(session.get('allowed_actions') or [])
         self.complete_btn.setEnabled('complete' in allowed)
         self.complete_btn.setText('完成学习' if 'complete' in allowed else '已完成')
+        # 学完之后才显示查看报告
+        self.report_btn.setVisible(session.get('phase') == 'completed')
 
         # 批量填充时屏蔽信号，避免每加一项都触发一次回调
         self.outline_list.blockSignals(True)
@@ -325,12 +386,27 @@ class StudyPage(QWidget):
         media: list[dict[str, Any]] | None = None,
         visualization: dict[str, Any] | None = None
     ) -> None:
-        html = render_markdown(markdown, media, visualization)
+        self._set_html(render_markdown(markdown, media, visualization))
 
-        document = QTextDocument()
+    # 渲染分节正文：按 bundle 缓存 HTML，避免重复跑公式与关系图出图
+    def _render_bundle(self, row: int, bundle: dict[str, Any]) -> None:
+        key = (self._session_id, row, id(bundle))
+        html = self._html_cache.get(key)
+        if html is None:
+            text = _append_legend(str(bundle.get('material') or ''), bundle)
+            html = render_markdown(text, bundle.get('media') or [], bundle.get('visualization'))
+            # 同一分节的旧 bundle 缓存一并清掉
+            for stale in [k for k in self._html_cache
+                          if k[0] == self._session_id and k[1] == row]:
+                self._html_cache.pop(stale, None)
+            self._html_cache[key] = html
+        self._set_html(html)
+
+    # 套用样式并写入正文控件，复用控件自带文档避免泄漏
+    def _set_html(self, html: str) -> None:
+        document = self.material_box.document()
         document.setDefaultStyleSheet(_STYLE_SHEET)
         document.setHtml(html)
-        self.material_box.setDocument(document)
         self.material_box.verticalScrollBar().setValue(0)
 
     # 渲染某个分节
@@ -339,7 +415,6 @@ class StudyPage(QWidget):
         title = section.get('title', '')
         bundle = self._bundles.get(row)
         markdown = (bundle or {}).get('material', '')
-        media = (bundle or {}).get('media') or []
 
         # 同步答疑面板：只有已生成资料的分节才能提问
         self.chat_panel.set_section(
@@ -351,6 +426,10 @@ class StudyPage(QWidget):
         self._sync_examples(row)
         # 交互图与静态图同源，切分节时一起刷新
         self.graph_view.render_graph((bundle or {}).get('visualization') or {})
+        # 折线图是某张图点开才渲染的，换分节时先清空
+        if row != self._chart_row:
+            self._chart_row = row
+            self.chart_view.render_chart({})
 
         if not markdown:
             # 后端标记已生成但正文还没回填，先给个过场提示
@@ -368,16 +447,27 @@ class StudyPage(QWidget):
             return
 
         # 正文里的 ![](media:xxx) 占位符就是配图位置，交由渲染器就地绘图
-        text = _append_legend(markdown, bundle or {})
-        self._show_markdown(text, media, (bundle or {}).get('visualization'))
+        self._render_bundle(row, bundle or {})
 
     # 同步例题面板：只有后端当前分节能提交判定，其它分节只读展示
     def _sync_examples(self, row: int) -> None:
         bundle = self._bundles.get(row) or {}
         examples = bundle.get('examples') or []
-        self.examples_panel.load_exercises(self._session_id, examples)
-
         gradeable = row in self._generated and self._session.get('current_section_index') == row
+
+        # 同一分节且题目没变时不重载，避免把用户已填的答案清掉
+        key = (
+            self._session_id,
+            row,
+            tuple(
+                (str(item.get('q_id')), str(item.get('question')))
+                for item in examples if isinstance(item, dict)
+            )
+        )
+        if key != self._examples_key:
+            self._examples_key = key
+            self.examples_panel.load_exercises(self._session_id, examples)
+
         self.examples_panel.set_gradeable(gradeable)
         self.examples_regen_btn.setVisible(bool(examples) and not gradeable)
 
@@ -393,27 +483,46 @@ class StudyPage(QWidget):
             return
 
         title = self._sections[row].get('title', '')
+        session_id = self._session_id
         self.status.setText(f'正在生成「{title}」的学习资料…（可能需一到数分钟）')
         run_async(
             self._client.generate_material,
-            self._session_id,
+            session_id,
             row,
             on_start=self._lock,
-            on_ok=lambda data, r=row: self._on_generated(r, data),
-            on_error=self._on_generate_error,
+            on_ok=lambda data, r=row, s=session_id: self._on_generated(r, data, s),
+            on_error=lambda code, message, s=session_id: self._on_generate_error(code, message, s),
             on_finish=self._unlock,
         )
 
-    # 生成期间锁住按钮与列表，避免中途切分节造成状态错乱
+    # 生成期间锁住会打断流程的控件，避免并发操作
     def _lock(self) -> None:
         self.generate_btn.setEnabled(False)
+        self.examples_regen_btn.setEnabled(False)
+        self.complete_btn.setEnabled(False)
         self.outline_list.setEnabled(False)
-        self.outline_list.setEnabled(False)
+        self.outline_toggle_btn.setEnabled(False)
+        for button in (
+            self.qa_toggle_btn,
+            self.examples_toggle_btn,
+            self.graph_toggle_btn,
+            self.chart_toggle_btn
+        ):
+            button.setEnabled(False)
         self.progress.show()
 
     # 生成结束恢复
     def _unlock(self) -> None:
         self.outline_list.setEnabled(True)
+        self.outline_toggle_btn.setEnabled(True)
+        self.examples_regen_btn.setEnabled(True)
+        for button in (
+            self.qa_toggle_btn,
+            self.examples_toggle_btn,
+            self.graph_toggle_btn,
+            self.chart_toggle_btn
+        ):
+            button.setEnabled(True)
         self.progress.hide()
         self._refresh_generate_btn(self.outline_list.currentRow())
         # 完成按钮的状态由阶段决定，重新读会话
@@ -421,7 +530,9 @@ class StudyPage(QWidget):
         self.complete_btn.setEnabled('complete' in allowed)
 
     # 生成成功：记录并展示
-    def _on_generated(self, row: int, data: Any) -> None:
+    def _on_generated(self, row: int, data: Any, session_id: str) -> None:
+        if session_id != self._session_id:
+            return
         if not isinstance(data, dict):
             self.status.setText('后端返回了未预期的结构。')
             return
@@ -445,7 +556,9 @@ class StudyPage(QWidget):
         )
         # 后端生成时会把当前分节指针移到本节，本地同步后例题才能立刻判定
         self._session['current_section_index'] = row
-        self._render_section(row)
+        # 只有用户还停在本次生成的分节时才刷新界面
+        if self.outline_list.currentRow() == row:
+            self._render_section(row)
 
     # 该分节若标记为已生成但正文未在内存，按需从后端回填一次
     def _ensure_material_loaded(self, row: int) -> None:
@@ -454,6 +567,7 @@ class StudyPage(QWidget):
         if row not in self._generated or row in self._bundles or row in self._loading:
             return
 
+        session_id = self._session_id
         self._loading.add(row)
         # 当前正在看这一节，先把过场提示显示出来
         if self.outline_list.currentRow() == row:
@@ -461,14 +575,18 @@ class StudyPage(QWidget):
 
         run_async(
             self._client.read_material,
-            self._session_id,
+            session_id,
             row,
-            on_ok=lambda data, r=row: self._on_material_loaded(r, data),
-            on_error=lambda code, message, r=row: self._on_material_load_error(r, code, message),
+            on_ok=lambda data, r=row, s=session_id: self._on_material_loaded(r, data, s),
+            on_error=lambda code, message, r=row, s=session_id: self._on_material_load_error(
+                r, code, message, s
+            ),
         )
 
     # 回填成功：缓存正文并按当前选中状态渲染
-    def _on_material_loaded(self, row: int, data: Any) -> None:
+    def _on_material_loaded(self, row: int, data: Any, session_id: str) -> None:
+        if session_id != self._session_id:
+            return
         self._loading.discard(row)
         if not isinstance(data, dict):
             self.status.setText('后端返回了未预期的结构。')
@@ -480,7 +598,9 @@ class StudyPage(QWidget):
             self._render_section(row)
 
     # 回填失败：产物确已不在就撤掉标记，否则保留供下次重试
-    def _on_material_load_error(self, row: int, code: str, message: str) -> None:
+    def _on_material_load_error(self, row: int, code: str, message: str, session_id: str) -> None:
+        if session_id != self._session_id:
+            return
         self._loading.discard(row)
         if code == 'artifact_not_found':
             self._generated.discard(row)
@@ -490,7 +610,9 @@ class StudyPage(QWidget):
         self._refresh_generate_btn(self.outline_list.currentRow())
 
     # 生成失败：按错误码给可操作提示
-    def _on_generate_error(self, code: str, message: str) -> None:
+    def _on_generate_error(self, code: str, message: str, session_id: str) -> None:
+        if session_id != self._session_id:
+            return
         self.status.setText(f'生成失败：{message}')
         if code == 'client_offline':
             QMessageBox.critical(self, '后端未启动', f'{message}\n\n请先启动后端服务。')
@@ -505,6 +627,12 @@ class StudyPage(QWidget):
             QMessageBox.warning(self, '产物缺失', f'{message}')
             return
         QMessageBox.critical(self, '生成资料失败', f'[{code}] {message}')
+
+    # 查看已归档的学习报告
+    def _on_view_report(self) -> None:
+        if not self._session_id:
+            return
+        show_report(self, self._client, self._session_id)
 
     # 切换到学习完毕，需先确认，因为不可回退
     def _on_complete_clicked(self) -> None:

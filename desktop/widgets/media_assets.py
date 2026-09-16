@@ -34,6 +34,8 @@ TEXT_COLOR = '#24292f'
 LABEL_COLOR = '#57606a'
 LINE_COLOR = '#0969da'
 TITLE_COLOR = '#24292f'
+# 多条曲线依次取用的颜色，保证同一张图里能区分
+SERIES_COLORS = (LINE_COLOR, '#cf222e', '#1a7f37', '#9a6700', '#8250df', '#0550ae')
 
 
 # 把 QImage 编码成 PNG 的 data URL，便于内嵌进 HTML
@@ -57,16 +59,34 @@ def diagram_to_image(diagram: dict[str, Any], *, width: int, height: int) -> QIm
     painter = QPainter(image)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
     try:
-        axis = diagram.get('axis') or {}
-        plot = _plot_rect(width, height)
-        _draw_frame(painter, diagram, plot)
-        for series in (diagram.get('series') or []):
-            _draw_series(painter, series, axis, plot)
-        _draw_marks(painter, diagram.get('marks') or [], axis, plot)
+        paint_diagram(painter, diagram, width, height)
     finally:
         painter.end()
 
     return image
+
+
+# 在给定画布上绘制 diagram，静态出图与交互视图共用
+def paint_diagram(painter: QPainter, diagram: dict[str, Any], width: int, height: int) -> None:
+    if not isinstance(diagram, dict):
+        return
+
+    axis = diagram.get('axis') or {}
+    plot = _plot_rect(width, height)
+    _draw_frame(painter, diagram, plot)
+    _draw_ticks(painter, axis, plot)
+
+    legend: list[tuple[str, str]] = []
+    series_list = [s for s in (diagram.get('series') or []) if isinstance(s, dict)]
+    for index, series in enumerate(series_list):
+        color = SERIES_COLORS[index % len(SERIES_COLORS)]
+        _draw_series(painter, series, axis, plot, color)
+        label = str(series.get('label') or '').strip()
+        if label:
+            legend.append((color, label))
+
+    _draw_marks(painter, diagram.get('marks') or [], axis, plot)
+    _draw_legend(painter, legend, plot)
 
 
 # 计算绘图区，四周留出标题与轴标签空间
@@ -140,7 +160,8 @@ def _draw_series(
     painter: QPainter,
     series: dict[str, Any],
     axis: dict[str, Any],
-    plot: QRectF
+    plot: QRectF,
+    color: str
 ) -> None:
     if not isinstance(series, dict):
         return
@@ -156,7 +177,7 @@ def _draw_series(
         'dotted': Qt.PenStyle.DotLine,
     }.get(style, Qt.PenStyle.SolidLine)
 
-    painter.setPen(QPen(QColor(LINE_COLOR), 2.0, pen_style))
+    painter.setPen(QPen(QColor(color), 2.0, pen_style))
     coords = [
         _to_point(float(p.get('x', 0.0)), float(p.get('y', 0.0)), axis, plot)
         for p in points
@@ -168,9 +189,77 @@ def _draw_series(
             int(coords[index + 1][0]), int(coords[index + 1][1])
         )
 
-    painter.setBrush(QColor(LINE_COLOR))
+    painter.setBrush(QColor(color))
     for px, py in coords:
         painter.drawEllipse(QRectF(px - 3.0, py - 3.0, 6.0, 6.0))
+
+
+# 在坐标轴上标出几档刻度数值
+def _draw_ticks(painter: QPainter, axis: dict[str, Any], plot: QRectF) -> None:
+    font = QFont()
+    font.setPointSize(7)
+    painter.setFont(font)
+    painter.setPen(QPen(QColor(LABEL_COLOR)))
+    metrics = painter.fontMetrics()
+
+    x_min = float(axis.get('x_min', 0.0))
+    x_max = float(axis.get('x_max', 1.0))
+    y_min = float(axis.get('y_min', 0.0))
+    y_max = float(axis.get('y_max', 1.0))
+
+    for step in range(5):
+        ratio = step / 4.0
+
+        px, _ = _to_point(x_min + (x_max - x_min) * ratio, y_min, axis, plot)
+        text = _format_tick(x_min + (x_max - x_min) * ratio)
+        painter.drawText(
+            QPointF(px - metrics.horizontalAdvance(text) / 2.0, plot.bottom() + metrics.height() + 1.0),
+            text
+        )
+
+        _, py = _to_point(x_min, y_min + (y_max - y_min) * ratio, axis, plot)
+        text = _format_tick(y_min + (y_max - y_min) * ratio)
+        painter.drawText(
+            QPointF(plot.left() - metrics.horizontalAdvance(text) - 4.0, py + metrics.ascent() / 2.0),
+            text
+        )
+
+
+# 刻度数值去掉多余小数
+def _format_tick(value: float) -> str:
+    if abs(value - round(value)) < 1e-9:
+        return str(int(round(value)))
+    return f'{value:.2f}'.rstrip('0').rstrip('.')
+
+
+# 图例：每条曲线一个色块加名称，压在绘图区右上角
+def _draw_legend(painter: QPainter, entries: list[tuple[str, str]], plot: QRectF) -> None:
+    if not entries:
+        return
+
+    font = QFont()
+    font.setPointSize(8)
+    painter.setFont(font)
+    metrics = painter.fontMetrics()
+
+    line_h = metrics.height() + 3.0
+    width = max(metrics.horizontalAdvance(label) for _, label in entries) + 34.0
+    height = line_h * len(entries) + 6.0
+    left = plot.right() - width - 8.0
+    top = plot.top() + 6.0
+
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(QColor(255, 255, 255, 220)))
+    painter.drawRoundedRect(QRectF(left, top, width, height), 4.0, 4.0)
+
+    y = top + 3.0
+    for color, label in entries:
+        mid = y + metrics.height() / 2.0
+        painter.setPen(QPen(QColor(color), 2.0))
+        painter.drawLine(QPointF(left + 6.0, mid), QPointF(left + 26.0, mid))
+        painter.setPen(QPen(QColor(TEXT_COLOR)))
+        painter.drawText(QPointF(left + 30.0, y + metrics.ascent()), label)
+        y += line_h
 
 
 # 画数据点上方的文字标注

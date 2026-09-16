@@ -206,7 +206,7 @@ class StartPage(QWidget):
         if code == 'client_offline':
             QMessageBox.critical(
                 self, '后端未启动',
-                f'{message}\n\n请先在另一个终端运行：\nuv run python -m learning_neko'
+                f'{message}\n\n请先在另一个终端运行：\npython main.py'
             )
             return
         if code == 'provider_not_configured':
