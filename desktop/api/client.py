@@ -153,6 +153,11 @@ class LearningClient:
             json={'source_doc': source_doc, 'user_request': user_request}
         )
 
+    # 列出最近的学习会话，供「打开历史会话」使用
+    def list_sessions(self, limit: int = 20) -> list[dict[str, Any]]:
+        safe = max(1, min(int(limit), 200))     # 与后端 Query(ge=1, le=200) 对齐
+        return self._request('GET', '/sessions', params={'limit': safe})
+
     # 读取会话快照，用于重启后续跑
     def snapshot(self, session_id: str) -> dict[str, Any]:
         return self._request('GET', f'/sessions/{session_id}')
