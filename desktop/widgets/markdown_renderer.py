@@ -7,7 +7,7 @@ from typing import Any
 from markdown_it import MarkdownIt
 
 from desktop.widgets.math_renderer import render_formula_image
-from desktop.widgets.media_assets import diagram_to_image, image_to_data_url
+from desktop.widgets.media_assets import diagram_to_image, image_to_data_url, visualization_to_image
 
 # 渲染实例：commonmark 打底，开启表格与删除线
 MARKDOWN = MarkdownIt('commonmark').enable('table').enable('strikethrough')
@@ -22,6 +22,11 @@ INLINE_FORMULA = re.compile(r'(?<!\$)\$(?!\$)([^\n$]+?)\$(?!\$)')
 # 正文图片显示宽度（像素）
 DIAGRAM_WIDTH = 720
 DIAGRAM_HEIGHT = 320
+# 关系图显示尺寸上限（像素）
+GRAPH_WIDTH = 760
+GRAPH_HEIGHT = 900
+# 关系图没有 id 时用的兜底编号，不会被正文占位符命中
+DEFAULT_GRAPH_ID = 'visualization'
 # 行内公式超过这个长度就改用块级呈现，避免横向溢出
 INLINE_FALLBACK_LIMIT = 24
 
@@ -30,20 +35,46 @@ INLINE_FALLBACK_LIMIT = 24
 def render_markdown(
     markdown: str,
     media: list[dict[str, Any]] | None = None,
+    visualization: dict[str, Any] | None = None,
     *,
     diagram_width: int = DIAGRAM_WIDTH,
-    diagram_height: int = DIAGRAM_HEIGHT
+    diagram_height: int = DIAGRAM_HEIGHT,
+    graph_width: int = GRAPH_WIDTH,
+    graph_height: int = GRAPH_HEIGHT
 ) -> str:
-    by_id = {
+    by_id = _asset_index(media, visualization)
+
+    text = drop_orphan_dollars(markdown)
+    text = _replace_formulas(text)
+    text = _replace_media(text, by_id, diagram_width, diagram_height, graph_width, graph_height)
+    return MARKDOWN.render(text)
+
+
+# 把 media 与顶层 visualization 归并成按 id 索引的素材表
+# 目前后端产出的 visualization 不带 id，正文也没有关系图占位符，这里只是用兜底编号登记；
+# 关系图实际由 study_page 追加到正文末尾。等后端给 visualization 加上 id、并在正文写
+# ![关系图](media:<id>) 之后，下面 _replace_media 的 flowchart 分支会自动把图就地渲染，
+# 届时无需再改前端。
+def _asset_index(
+    media: list[dict[str, Any]] | None,
+    visualization: dict[str, Any] | None
+) -> dict[str, dict[str, Any]]:
+    assets = {
         str(item.get('id')): item
         for item in (media or [])
         if isinstance(item, dict) and item.get('id')
     }
 
-    text = drop_orphan_dollars(markdown)
-    text = _replace_formulas(text)
-    text = _replace_media(text, by_id, diagram_width, diagram_height)
-    return MARKDOWN.render(text)
+    if isinstance(visualization, dict) and visualization.get('nodes'):
+        graph_id = str(visualization.get('id') or DEFAULT_GRAPH_ID)
+        assets.setdefault(graph_id, {
+            'id': graph_id,
+            'kind': 'flowchart',
+            'caption': str(visualization.get('title') or '知识点关系图'),
+            'flowchart': visualization,
+        })
+
+    return assets
 
 
 # 去掉孤立美元符：行内公式无法配对时会破坏后续解析
@@ -117,7 +148,9 @@ def _replace_media(
     markdown: str,
     by_id: dict[str, dict[str, Any]],
     diagram_width: int,
-    diagram_height: int
+    diagram_height: int,
+    graph_width: int,
+    graph_height: int
 ) -> str:
     def sub(match: re.Match[str]) -> str:
         alt = match.group(1).strip()
@@ -144,6 +177,21 @@ def _replace_media(
                     url = image_to_data_url(image)
                     return f'![{caption}]({url})'
             # 绘制规格缺失，退化成图注文字
+            caption = str(item.get('caption') or alt or media_id)
+            return f'**【图】{caption}**'
+
+        # flowchart 由客户端把知识点关系画成图
+        if kind == 'flowchart':
+            spec = item.get('flowchart')
+            if isinstance(spec, dict):
+                image = visualization_to_image(
+                    spec,
+                    width=graph_width,
+                    max_height=graph_height
+                )
+                if image is not None and not image.isNull():
+                    caption = str(item.get('caption') or alt or media_id)
+                    return f'![{caption}]({image_to_data_url(image)})'
             caption = str(item.get('caption') or alt or media_id)
             return f'**【图】{caption}**'
 

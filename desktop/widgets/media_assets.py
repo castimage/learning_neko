@@ -1,10 +1,29 @@
 # 素材绘制：把 diagram 规格画成图片，并提供图片转 data URL 的工具
 from __future__ import annotations
 
+import math
 from typing import Any
 
-from PyQt6.QtCore import QBuffer, QIODevice, QRectF, Qt
-from PyQt6.QtGui import QColor, QFont, QImage, QPainter, QPen
+from PyQt6.QtCore import QBuffer, QIODevice, QPointF, QRectF, Qt
+from PyQt6.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QImage,
+    QPainter,
+    QPen,
+    QPolygonF,
+)
+
+from desktop.widgets.graph_layout import (
+    NODE_HEIGHT as GRAPH_NODE_HEIGHT,
+    NODE_WIDTH as GRAPH_NODE_WIDTH,
+    assign_levels as _graph_levels,
+    content_bounds as _graph_bounds,
+    edge_anchors as _edge_anchors,
+    edge_path as _edge_path,
+    layout_nodes as _graph_layout,
+)
 
 # 画布白底，与正文背景一致
 BG_COLOR = '#ffffff'
@@ -190,3 +209,228 @@ def _draw_marks(
         if y < plot.top() + metrics.height():
             y = py + metrics.height() + 4.0
         painter.drawText(int(x), int(y), text)
+
+
+# ---------- 知识点关系图 ----------
+
+# 关系图节点圆角与箭头尺寸（尺寸与间距见 graph_layout）
+GRAPH_CORNER = 10.0
+GRAPH_ARROW_SIZE = 10.0
+
+# 各节点类型的 (填充色, 边框色, 文字色)，适配白底正文
+GRAPH_NODE_STYLE: dict[str, tuple[str, str, str]] = {
+    'root': ('#dbe6f6', '#5b8dd9', '#1b2a44'),
+    'concept': ('#e6eef8', '#4a7db5', '#20303f'),
+    'detail': ('#eef1f4', '#8a929b', '#333333'),
+    'example': ('#e2f0d9', '#5f8a4a', '#2f3a2a'),
+    'warning': ('#fbe4e4', '#d06a6a', '#5a2020'),
+}
+GRAPH_DEFAULT_NODE_STYLE = ('#eef1f4', '#8a929b', '#333333')
+
+# 各边类型的 (颜色, 线型, 是否带箭头)
+GRAPH_EDGE_STYLE: dict[str, tuple[str, Qt.PenStyle, bool]] = {
+    'contains': ('#4a7db5', Qt.PenStyle.SolidLine, True),
+    'hierarchy': ('#5f8a4a', Qt.PenStyle.SolidLine, True),
+    'prerequisite': ('#b58a4a', Qt.PenStyle.SolidLine, True),
+    'causes': ('#a04a4a', Qt.PenStyle.SolidLine, True),
+    'contrast': ('#8a5aa0', Qt.PenStyle.DashLine, False),
+    'related': ('#5a5a5a', Qt.PenStyle.DotLine, False),
+}
+GRAPH_DEFAULT_EDGE_STYLE = ('#5a5a5a', Qt.PenStyle.DotLine, False)
+
+
+# 把 visualization 规格画成图片，节点按层级排布、有向边带箭头
+def visualization_to_image(
+    visualization: dict[str, Any],
+    *,
+    width: int = 760,
+    max_height: int = 1100
+) -> QImage | None:
+    if not isinstance(visualization, dict):
+        return None
+
+    nodes = [n for n in (visualization.get('nodes') or []) if isinstance(n, dict)]
+    edges = [e for e in (visualization.get('edges') or []) if isinstance(e, dict)]
+    if not nodes:
+        return None
+
+    direction = str(visualization.get('direction') or 'top_down')
+    positions = _graph_layout(_graph_levels(nodes, edges), nodes, direction)
+
+    content_w, content_h = _graph_bounds(positions)
+    scale = min(
+        1.0,
+        width / content_w if content_w else 1.0,
+        max_height / content_h if content_h else 1.0
+    )
+    image = QImage(
+        max(1, round(content_w * scale)),
+        max(1, round(content_h * scale)),
+        QImage.Format.Format_ARGB32
+    )
+    image.fill(QColor(BG_COLOR))
+
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    try:
+        painter.scale(scale, scale)
+        _draw_graph_groups(painter, visualization.get('groups') or [], positions)
+        _draw_graph_edges(painter, edges, positions)
+        _draw_graph_nodes(painter, nodes, positions)
+    finally:
+        painter.end()
+
+    return image
+
+
+# 先给分组画虚线框，压在节点与连线下面
+def _draw_graph_groups(
+    painter: QPainter,
+    groups: list[Any],
+    positions: dict[str, QPointF]
+) -> None:
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+
+        points = [
+            positions[str(node_id)]
+            for node_id in (group.get('node_ids') or [])
+            if str(node_id) in positions
+        ]
+        if not points:
+            continue
+
+        left = min(point.x() for point in points) - 12.0
+        top = min(point.y() for point in points) - 22.0
+        right = max(point.x() for point in points) + GRAPH_NODE_WIDTH + 12.0
+        bottom = max(point.y() for point in points) + GRAPH_NODE_HEIGHT + 12.0
+
+        painter.setPen(QPen(QColor('#b9c2cc'), 1.2, Qt.PenStyle.DashLine))
+        painter.drawRoundedRect(QRectF(left, top, right - left, bottom - top), 8.0, 8.0)
+
+        label = str(group.get('label') or '')
+        if label:
+            font = QFont()
+            font.setPointSize(8)
+            painter.setFont(font)
+            painter.setPen(QPen(QColor('#57606a')))
+            painter.drawText(
+                QRectF(left + 8.0, top + 3.0, right - left - 16.0, 16.0),
+                Qt.AlignmentFlag.AlignLeft,
+                label
+            )
+
+
+# 画全部边，后画的节点会压住线头
+def _draw_graph_edges(
+    painter: QPainter,
+    edges: list[dict[str, Any]],
+    positions: dict[str, QPointF]
+) -> None:
+    for edge in edges:
+        start = positions.get(str(edge.get('source', '')))
+        end = positions.get(str(edge.get('target', '')))
+        if start is None or end is None:
+            continue
+
+        kind = str(edge.get('kind', 'related'))
+        color, style, head = GRAPH_EDGE_STYLE.get(kind, GRAPH_DEFAULT_EDGE_STYLE)
+
+        start_anchor, end_anchor = _edge_anchors(start, end)
+        path, tip, tail = _edge_path(start_anchor, end_anchor)
+
+        painter.setPen(QPen(QColor(color), 1.6, style))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(path)
+
+        if head:
+            _draw_arrow(painter, QColor(color), tip, tail)
+
+        label = str(edge.get('label') or '')
+        if label:
+            _draw_edge_label(painter, label, path.pointAtPercent(0.5), color)
+
+
+# 在终点按切线方向画一个实心箭头
+def _draw_arrow(
+    painter: QPainter,
+    color: QColor,
+    tip: QPointF,
+    tail: QPointF
+) -> None:
+    angle = math.atan2(tip.y() - tail.y(), tip.x() - tail.x())
+    spread = 0.45
+    left = QPointF(
+        tip.x() - GRAPH_ARROW_SIZE * math.cos(angle - spread),
+        tip.y() - GRAPH_ARROW_SIZE * math.sin(angle - spread)
+    )
+    right = QPointF(
+        tip.x() - GRAPH_ARROW_SIZE * math.cos(angle + spread),
+        tip.y() - GRAPH_ARROW_SIZE * math.sin(angle + spread)
+    )
+
+    painter.setPen(QPen(color, 1.0))
+    painter.setBrush(QBrush(color))
+    painter.drawPolygon(QPolygonF([tip, left, right]))
+
+
+# 边的标签压在曲线上，垫一块白底保证可读
+def _draw_edge_label(
+    painter: QPainter,
+    text: str,
+    point: QPointF,
+    color: str
+) -> None:
+    font = QFont()
+    font.setPointSize(8)
+    painter.setFont(font)
+
+    metrics = painter.fontMetrics()
+    width = metrics.horizontalAdvance(text)
+    height = metrics.height()
+    rect = QRectF(
+        point.x() - width / 2.0 - 3.0,
+        point.y() - height / 2.0 - 1.0,
+        width + 6.0,
+        height + 2.0
+    )
+
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(QColor('#ffffff')))
+    painter.drawRoundedRect(rect, 3.0, 3.0)
+
+    painter.setPen(QPen(QColor(color)))
+    painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+
+
+# 画全部节点，颜色与粗体由 kind 决定
+def _draw_graph_nodes(
+    painter: QPainter,
+    nodes: list[dict[str, Any]],
+    positions: dict[str, QPointF]
+) -> None:
+    for node in nodes:
+        point = positions.get(str(node.get('id', '')))
+        if point is None:
+            continue
+
+        kind = str(node.get('kind', 'concept'))
+        fill, border, text_color = GRAPH_NODE_STYLE.get(kind, GRAPH_DEFAULT_NODE_STYLE)
+        rect = QRectF(point.x(), point.y(), GRAPH_NODE_WIDTH, GRAPH_NODE_HEIGHT)
+
+        painter.setPen(QPen(QColor(border), 1.6))
+        painter.setBrush(QBrush(QColor(fill)))
+        painter.drawRoundedRect(rect, GRAPH_CORNER, GRAPH_CORNER)
+
+        font = QFont()
+        font.setPointSize(10)
+        font.setBold(kind == 'root')
+        painter.setFont(font)
+        painter.setPen(QPen(QColor(text_color)))
+        painter.drawText(
+            rect.adjusted(8.0, 4.0, -8.0, -4.0),
+            Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap,
+            str(node.get('label', ''))
+        )

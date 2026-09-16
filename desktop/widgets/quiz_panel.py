@@ -172,6 +172,8 @@ class QuizPanel(QWidget):
         self._busy = False
         # 是否已批改过，决定按钮是「提交」还是「重新作答」
         self._graded = False
+        # 本节是否允许提交判定，只读模式下只展示题目
+        self._gradeable = True
         self._build_ui()
 
     # 搭控件树
@@ -219,6 +221,7 @@ class QuizPanel(QWidget):
     def load_exercises(self, session_id: str, exercises: list[dict[str, Any]]) -> None:
         self._session_id = session_id
         self._graded = False
+        self._gradeable = True
         self._clear_cards()
 
         items = [e for e in exercises if isinstance(e, dict)]
@@ -254,15 +257,22 @@ class QuizPanel(QWidget):
             return
 
         unanswered = sum(1 for c in self._cards if not c.answered())
-        enabled = unanswered == 0 and not self._busy
+        enabled = unanswered == 0 and not self._busy and self._gradeable
         self.submit_btn.setEnabled(enabled)
 
         if self._busy:
             return
-        if unanswered:
+        if not self._gradeable:
+            self.hint.setText(f'共 {len(self._cards)} 题。本节需重新生成资料后才能提交判定。')
+        elif unanswered:
             self.hint.setText(f'共 {len(self._cards)} 题，还有 {unanswered} 题未作答。')
         else:
             self.hint.setText(f'共 {len(self._cards)} 题，已全部作答，可以提交。')
+
+    # 切换本节能否提交判定，只读时题目仍可作答自测
+    def set_gradeable(self, gradeable: bool) -> None:
+        self._gradeable = gradeable
+        self._sync_submit()
 
     # 提交整卷作答，或重新作答
     def _on_submit(self) -> None:
@@ -272,6 +282,9 @@ class QuizPanel(QWidget):
         # 已批改过说明这次是「重新作答」，只解锁不提交
         if self._graded:
             self._reset_for_retry()
+            return
+
+        if not self._gradeable:
             return
 
         answers = [{'q_id': c.q_id, 'answer': c.answer()} for c in self._cards]

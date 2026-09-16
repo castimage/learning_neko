@@ -1,6 +1,7 @@
-# 起始页：输入学习资料与需求，提交后由主窗口切到学习页
+# 起始页：选择资料文件与需求，提交后由主窗口切到学习页
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from PyQt6.QtCore import pyqtSignal
@@ -9,7 +10,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QVBoxLayout,
@@ -17,10 +17,14 @@ from PyQt6.QtWidgets import (
 )
 
 from desktop.api.client import LearningClient
+from desktop.documents import DocumentError, SUPPORTED_SUFFIXES, extract_text
+from desktop.widgets.file_drop import FileDropArea
 from desktop.workers import run_async
 
 # 资料超过这个长度就提醒用户，避免一次提交过大正文
 LENGTH_WARNING = 20000
+# 单文件读取上限，超过直接拒绝，避免把超大文件读进内存
+MAX_FILE_BYTES = 20_000_000
 
 
 # 起始页控件
@@ -32,6 +36,8 @@ class StartPage(QWidget):
     def __init__(self, client: LearningClient, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._client = client
+        # 已选文件解析出的正文
+        self._document = ''
         self._build_ui()
         self._connect_signals()
 
@@ -40,18 +46,17 @@ class StartPage(QWidget):
         title = QLabel('开始一次学习')
         title.setStyleSheet('font-size: 20px; font-weight: bold;')
 
-        hint = QLabel('把要学的资料贴进来，再写一句你的学习需求。')
+        hint = QLabel('选择或拖入一份资料文件，再写一句你的学习需求。')
         hint.setStyleSheet('color: #888;')
 
-        self.doc_box = QPlainTextEdit()
-        self.doc_box.setPlaceholderText('在这里粘贴学习资料正文…')
-        self.doc_box.setMinimumHeight(320)
+        self.drop_area = FileDropArea()
+
+        self.file_info = QLabel('尚未选择资料文件')
+        self.file_info.setStyleSheet('color: #888;')
+        self.file_info.setWordWrap(True)
 
         self.request_edit = QLineEdit()
         self.request_edit.setPlaceholderText('例如：我是初学者，想理解条件概率和贝叶斯公式')
-
-        self.doc_count = QLabel('0 字')
-        self.doc_count.setStyleSheet('color: #888;')
 
         self.start_btn = QPushButton('开始学习')
         self.start_btn.setMinimumHeight(36)
@@ -69,8 +74,7 @@ class StartPage(QWidget):
         request_row.addWidget(self.request_edit, 1)
 
         bottom_row = QHBoxLayout()
-        bottom_row.addWidget(self.doc_count)
-        bottom_row.addStretch(1)
+        bottom_row.addWidget(self.file_info, 1)
         bottom_row.addWidget(self.start_btn)
 
         layout = QVBoxLayout(self)
@@ -79,31 +83,69 @@ class StartPage(QWidget):
         layout.addWidget(title)
         layout.addWidget(hint)
         layout.addWidget(QLabel('学习资料：'))
-        layout.addWidget(self.doc_box, 1)
+        layout.addWidget(self.drop_area)
         layout.addLayout(request_row)
         layout.addWidget(self.progress)
         layout.addLayout(bottom_row)
         layout.addWidget(self.status)
+        layout.addStretch(1)
 
     # 所有连线集中在这里
     def _connect_signals(self) -> None:
         self.start_btn.clicked.connect(self._on_start_clicked)
-        self.doc_box.textChanged.connect(self._on_doc_changed)
+        self.drop_area.file_selected.connect(self._on_file_selected)
 
-    # 实时更新字数，过长时变色提醒
-    def _on_doc_changed(self) -> None:
-        length = len(self.doc_box.toPlainText().strip())
-        self.doc_count.setText(f'{length} 字')
-        too_long = length > LENGTH_WARNING
-        self.doc_count.setStyleSheet('color: #d9534f;' if too_long else 'color: #888;')
+    # 读取并校验选中的资料文件
+    def _on_file_selected(self, path: str) -> None:
+        source = Path(path)
+        if source.suffix.lower() not in SUPPORTED_SUFFIXES:
+            QMessageBox.warning(
+                self, '暂不支持该格式',
+                '目前支持 PDF、Word(.docx)、EPUB 以及 txt、md 等文本资料。'
+            )
+            return
+
+        try:
+            size = source.stat().st_size
+        except OSError as exc:
+            QMessageBox.critical(self, '无法读取文件', f'{source.name}：{exc}')
+            return
+
+        if size > MAX_FILE_BYTES:
+            QMessageBox.warning(
+                self, '文件过大',
+                f'{source.name} 有 {size / 1024 / 1024:.1f} MB，'
+                f'超过 {MAX_FILE_BYTES // 1024 // 1024} MB 上限，请先精简资料。'
+            )
+            return
+
+        try:
+            document = extract_text(source).strip()
+        except (DocumentError, OSError) as exc:
+            QMessageBox.critical(self, '无法读取文件', f'{source.name}：{exc}')
+            return
+
+        if not document:
+            QMessageBox.warning(self, '文件是空的', f'{source.name} 里没有可读取的文字。')
+            return
+
+        self._document = document
+        self.drop_area.show_file(source.name, len(document))
+
+        too_long = len(document) > LENGTH_WARNING
+        self.file_info.setText(
+            f'已选择：{source.name}｜{len(document)} 字'
+            + ('（较长，生成会慢一些）' if too_long else '')
+        )
+        self.file_info.setStyleSheet('color: #d9534f;' if too_long else 'color: #888;')
 
     # 校验输入并提交
     def _on_start_clicked(self) -> None:
-        document = self.doc_box.toPlainText().strip()
+        document = self._document
         request = self.request_edit.text().strip()
 
         if not document:
-            QMessageBox.information(self, '还差一步', '请先粘贴学习资料。')
+            QMessageBox.information(self, '还差一步', '请先选择或拖入资料文件。')
             return
 
         if not request:
@@ -134,7 +176,7 @@ class StartPage(QWidget):
     def _lock(self) -> None:
         self.start_btn.setEnabled(False)
         self.start_btn.setText('生成中…')
-        self.doc_box.setReadOnly(True)
+        self.drop_area.setEnabled(False)
         self.request_edit.setReadOnly(True)
         self.progress.show()
 
@@ -142,7 +184,7 @@ class StartPage(QWidget):
     def _unlock(self) -> None:
         self.start_btn.setEnabled(True)
         self.start_btn.setText('开始学习')
-        self.doc_box.setReadOnly(False)
+        self.drop_area.setEnabled(True)
         self.request_edit.setReadOnly(False)
         self.progress.hide()
 
@@ -178,7 +220,8 @@ class StartPage(QWidget):
     # 供主窗口在「新建」时清空页面状态
     def reset(self) -> None:
         self.status.setText('')
-        self.doc_box.clear()
+        self._document = ''
+        self.drop_area.clear_file()
         self.request_edit.clear()
-        self.doc_count.setText('0 字')
-        self.doc_count.setStyleSheet('color: #888;')
+        self.file_info.setText('尚未选择资料文件')
+        self.file_info.setStyleSheet('color: #888;')
