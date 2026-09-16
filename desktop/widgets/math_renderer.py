@@ -9,6 +9,8 @@ FOREGROUND = '#24292f'
 BG_COLOR = '#ffffff'
 # 渲染放大倍数，越大越清晰
 SCALE = 3.0
+# 公式图片缓存上限，超过按插入顺序淘汰，避免长会话无界增长
+CACHE_LIMIT = 256
 # 公式图片缓存，None 表示该公式渲染失败，避免重复尝试
 _CACHE: dict[str, QImage | None] = {}
 # matplotlib 可用性，只在首次调用时探测
@@ -43,6 +45,8 @@ def render_formula_image(latex: str, *, display: bool) -> QImage | None:
         return _CACHE[key]
 
     image = _render(source, display=display)
+    if len(_CACHE) >= CACHE_LIMIT:
+        _CACHE.pop(next(iter(_CACHE)), None)
     _CACHE[key] = image
     return image
 

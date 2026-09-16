@@ -17,6 +17,8 @@ from PyQt6.QtWidgets import (
 )
 
 from desktop.api.client import LearningClient
+from desktop.pages.report_dialog import show_report
+from desktop.reporting import report_to_markdown
 from desktop.workers import run_async
 from desktop.widgets.markdown_renderer import render_markdown
 from desktop.widgets.quiz_panel import QuizPanel
@@ -61,7 +63,8 @@ class ExamPage(QWidget):
         self.phase_label = QLabel('')
         self.phase_label.setStyleSheet('color: #57606a;')
 
-        self.back_btn = QPushButton('返回学习')
+        self.back_btn = QPushButton('重新学习')
+        self.back_btn.setToolTip('返回学习页复习已生成的资料（学习阶段已结束，不能再生成）')
         self.back_btn.clicked.connect(self.back_requested.emit)
 
         self.generate_btn = QPushButton('生成课后测验')
@@ -70,6 +73,9 @@ class ExamPage(QWidget):
         self.summary_btn = QPushButton('生成学习报告')
         self.summary_btn.setEnabled(False)
         self.summary_btn.clicked.connect(self._on_summarize)
+
+        self.report_btn = QPushButton('查看学习报告')
+        self.report_btn.clicked.connect(self._on_view_report)
 
         self.progress = QProgressBar()
         self.progress.setRange(0, 0)
@@ -105,6 +111,7 @@ class ExamPage(QWidget):
         header.addWidget(self.phase_label, 1)
         header.addWidget(self.generate_btn)
         header.addWidget(self.summary_btn)
+        header.addWidget(self.report_btn)
         header.addWidget(self.back_btn)
 
         layout = QVBoxLayout(self)
@@ -190,33 +197,17 @@ class ExamPage(QWidget):
             self.status.setText('后端返回了未预期的结构。')
             return
 
-        report = str(data.get('report') or '')
-        score = str(data.get('score') or '')
-        comment = str(data.get('comment') or '')
-        mastery = data.get('mastery') or {}
-        next_focus = data.get('next_focus') or []
-
-        parts: list[str] = []
-        if score or comment:
-            parts.append('## 得分')
-            parts.append(f'**{score}**　{comment}'.strip())
-        if report:
-            parts.append('## 学习报告')
-            parts.append(report)
-        if mastery:
-            parts.append('## 掌握度')
-            for point, value in mastery.items():
-                bar = _mastery_bar(float(value))
-                parts.append(f'- {point}：{bar} {float(value):.0%}')
-        if next_focus:
-            parts.append('## 下次重点')
-            parts.extend(f'- {item}' for item in next_focus)
-
-        html = render_markdown('\n\n'.join(parts))
+        html = render_markdown(report_to_markdown(data))
         document = self.report_box.document()
         document.setDefaultStyleSheet(_STYLE_SHEET)
         document.setHtml(html)
         self.status.setText('学习报告已生成。')
+
+    # 查看已归档的学习报告
+    def _on_view_report(self) -> None:
+        if not self._session_id:
+            return
+        show_report(self, self._client, self._session_id)
 
     # 执行期间锁住按钮
     def _lock(self) -> None:
@@ -231,7 +222,7 @@ class ExamPage(QWidget):
         self.back_btn.setEnabled(True)
         self.progress.hide()
         # 有题目才允许出报告
-        self.summary_btn.setEnabled(bool(self.quiz_panel._cards))
+        self.summary_btn.setEnabled(self.quiz_panel.has_exercises())
 
     # 失败处理
     def _on_error(self, code: str, message: str) -> None:
@@ -246,9 +237,3 @@ class ExamPage(QWidget):
             QMessageBox.critical(self, '后端未启动', f'{message}\n\n请先启动后端服务。')
             return
         QMessageBox.critical(self, '操作失败', f'[{code}] {message}')
-
-
-# 用方块拼出掌握度条
-def _mastery_bar(value: float) -> str:
-    filled = max(0, min(10, round(value * 10)))
-    return '█' * filled + '░' * (10 - filled)

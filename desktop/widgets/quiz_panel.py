@@ -366,6 +366,10 @@ class QuizPanel(QWidget):
             return
         self._sync_submit()
 
+    # 是否已装载题目
+    def has_exercises(self) -> bool:
+        return bool(self._cards)
+
     # 正在忙吗
     def is_busy(self) -> bool:
         return self._busy
