@@ -1,0 +1,14 @@
+anyio
+fastapi
+httpx
+Jinja2
+langchain[llms]
+loguru
+openai
+pydantic
+pydantic_settings
+python-dotenv
+SQLAlchemy
+sqlmodel
+starlette
+uvicorn
