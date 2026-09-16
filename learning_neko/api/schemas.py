@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from learning_neko.application.study_service import MemoryContext
 from learning_neko.domain.models.enums import ArtifactKind, ArtifactStatus, LearningPhase
@@ -23,22 +23,22 @@ from learning_neko.domain.state import allowed_actions
 class StartSessionRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    source_doc: str
-    user_request: str
+    source_doc: str = Field(min_length=1)
+    user_request: str = Field(min_length=1)
 
 
 # 提问的请求体
 class QuestionRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    question: str
+    question: str = Field(min_length=1)
 
 
 # 提交作答的请求体
 class AnswersRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
-    answers: list[AnswerSubmission]
+    answers: list[AnswerSubmission] = Field(min_length=1)
 
 
 # 会话快照的响应体
@@ -55,6 +55,7 @@ class SessionView(BaseModel):
     mistakes: list[Mistake]
     allowed_actions: list[str]
     memory_context: MemoryContext | None = None
+    generated_sections: list[int] = []
     created_at: datetime
     updated_at: datetime
 
@@ -143,7 +144,11 @@ def session_summary_view(record: SessionRecord) -> SessionSummaryView:
 
 
 # 由会话生成会话快照响应
-def session_view(record: SessionRecord, memory_context: MemoryContext | None = None) -> SessionView:
+def session_view(
+        record: SessionRecord,
+        memory_context: MemoryContext | None = None,
+        generated_sections: list[int] | None = None
+) -> SessionView:
     return SessionView(
         session_id=record.session_id,
         topic=record.topic,
@@ -155,6 +160,7 @@ def session_view(record: SessionRecord, memory_context: MemoryContext | None = N
         mistakes=list(record.mistakes),
         allowed_actions=list(allowed_actions(record.phase)),
         memory_context=memory_context,
+        generated_sections=generated_sections or [],
         created_at=record.created_at,
         updated_at=record.updated_at
     )

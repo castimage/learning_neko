@@ -329,6 +329,18 @@ class StudyService:
     async def memory_of(self, topic: str) -> TopicMemory | None:
         return await self._memory.get(topic)
 
+    # 读取某分节已生成的材料，缺失时报错
+    async def read_material(self, session_id: str, section_index: int) -> MaterialRecord:
+        stored = await self._sessions.get_material(session_id, section_index, ArtifactKind.MATERIAL)
+        if stored is None:
+            raise ArtifactNotFound(
+                '该分节尚未生成学习资料',
+                session_id=session_id,
+                section_index=section_index
+            )
+
+        return stored
+
     # 生成指定分节的资料、例题与关系图并落库
     @guarded('generate_material')
     async def generate_material(self, record: SessionRecord, section_index: int) -> tuple[SessionRecord, MaterialRecord]:

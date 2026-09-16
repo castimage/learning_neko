@@ -29,7 +29,7 @@ from learning_neko.application.study_service import StudyService
 from learning_neko.config import PROVIDER_PROFILES, Settings
 from learning_neko.container import Container, ServiceKey
 from learning_neko.domain.errors import ArtifactNotFound, AssetNotFound
-from learning_neko.domain.models.enums import StructuredMode
+from learning_neko.domain.models.enums import StructuredMode, ArtifactKind
 from learning_neko.domain.models.memory import SessionOutcome, TopicMemory
 from learning_neko.ports.assets import AssetCatalogPort
 
@@ -164,7 +164,7 @@ async def start_session(
     return ok(session_view(record, memory_context))
 
 
-# 读取会话快照
+# 读取会话快照列表
 @study_router.get('', response_model=ApiResponse[list[SessionSummaryView]], summary='列出最近的学习会话，供前端发现既有会话')
 async def list_sessions(
     limit: int = Query(default=20, ge=1, le=200),
@@ -173,14 +173,33 @@ async def list_sessions(
     records = await service.list_recent_sessions(limit)
     return ok([session_summary_view(record) for record in records])
 
-
+# 读取会话快照
 @study_router.get('/{session_id}', response_model=ApiResponse[SessionView], summary='读取会话快照，可用于重启后续跑')
 async def read_session(
     session_id: str,
     service: StudyService = Depends(get_study_service)
 ) -> ApiResponse[SessionView]:
-    record, _ = await service.snapshot(session_id)
-    return ok(session_view(record))
+    record, materials = await service.snapshot(session_id)
+    generated = [
+        item.section_index for item in materials if item.artifact_kind is ArtifactKind.MATERIAL
+    ]
+
+    return ok(session_view(record, generated_sections=generated))
+
+
+# 读取某分节已生成的学习资料
+@study_router.get(
+    '/{session_id}/sections/{section_index}/material',
+    response_model=ApiResponse[MaterialView],
+    summary='读取某分节已生成的学习资料'
+)
+async def read_material(
+    session_id: str,
+    section_index: int,
+    service: StudyService = Depends(get_study_service)
+) -> ApiResponse[MaterialView]:
+    stored = await service.read_material(session_id, section_index)
+    return ok(material_view(stored))
 
 
 # 把会话切到学习完毕
