@@ -3,6 +3,7 @@ fastapi
 httpx
 Jinja2
 langchain[llms]
+langchain-openai
 loguru
 openai
 pydantic
