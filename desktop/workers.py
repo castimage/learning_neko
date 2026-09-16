@@ -6,6 +6,8 @@ from typing import Any
 
 from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal
 
+from desktop.api.client import ApiError
+
 
 # 任务开始、成功、失败与结束都以信号形式回到主线程
 class WorkerSignals(QObject):
@@ -31,6 +33,8 @@ class Worker(QRunnable):
         self.signals.started.emit()
         try:
             result = self._fn(*self._args, **self._kwargs)
+        except ApiError as exc:             # 业务错误：透出后端错误码，界面据此分支提示
+            self.signals.failed.emit(exc.code, exc.message)
         except Exception as exc:            # 故意宽捕获：后台线程的异常不能漏
             self.signals.failed.emit(type(exc).__name__, str(exc))
         else:

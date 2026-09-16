@@ -149,6 +149,7 @@ def test_request_shape() -> None:
         client.start_session('资料', '需求')
         client.snapshot('abc')
         client.generate_material('abc', 2)
+        client.read_material('abc', 2)
         client.ask('abc', '问题')
         client.check_examples('abc', [{'q_id': 'q1', 'answer': 'A'}])
         client.complete('abc')
@@ -161,6 +162,7 @@ def test_request_shape() -> None:
         ('POST', '/sessions'),
         ('GET', '/sessions/abc'),
         ('POST', '/sessions/abc/sections/2/material'),
+        ('GET', '/sessions/abc/sections/2/material'),
         ('POST', '/sessions/abc/qa'),
         ('POST', '/sessions/abc/examples/check'),
         ('POST', '/sessions/abc/complete'),

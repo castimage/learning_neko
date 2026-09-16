@@ -169,6 +169,13 @@ class LearningClient:
             f'/sessions/{session_id}/sections/{section_index}/material'
         )
 
+    # 读取指定分节已生成的学习资料，用于重新打开会话时回填
+    def read_material(self, session_id: str, section_index: int) -> dict[str, Any]:
+        return self._request(
+            'GET',
+            f'/sessions/{session_id}/sections/{section_index}/material'
+        )
+
     # 就当前分节提问
     def ask(self, session_id: str, question: str) -> dict[str, Any]:
         return self._request(
