@@ -13,4 +13,5 @@ data/
 .idea/
 scripts/
 pyproject.toml
+docs/
 README.md
