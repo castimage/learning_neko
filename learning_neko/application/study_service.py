@@ -319,6 +319,12 @@ class StudyService:
 
         return record, materials
 
+    # 按最近变更时间倒序列出会话，供前端发现既有会话
+    async def list_recent_sessions(self, limit: int) -> list[SessionRecord]:
+        records = await self._sessions.list_recent(limit)
+        logger.info('列出最近会话 | 命中 {} 条（上限 {}）', len(records), limit)
+        return records
+
     # 按主题取记忆
     async def memory_of(self, topic: str) -> TopicMemory | None:
         return await self._memory.get(topic)

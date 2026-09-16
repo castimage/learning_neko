@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -17,7 +17,9 @@ from learning_neko.api.schemas import (
     MaterialView,
     QaView,
     QuestionRequest,
+    session_summary_view,
     session_view,
+    SessionSummaryView,
     SessionView,
     StartSessionRequest,
     SummaryView,
@@ -163,6 +165,15 @@ async def start_session(
 
 
 # 读取会话快照
+@study_router.get('', response_model=ApiResponse[list[SessionSummaryView]], summary='列出最近的学习会话，供前端发现既有会话')
+async def list_sessions(
+    limit: int = Query(default=20, ge=1, le=200),
+    service: StudyService = Depends(get_study_service)
+) -> ApiResponse[list[SessionSummaryView]]:
+    records = await service.list_recent_sessions(limit)
+    return ok([session_summary_view(record) for record in records])
+
+
 @study_router.get('/{session_id}', response_model=ApiResponse[SessionView], summary='读取会话快照，可用于重启后续跑')
 async def read_session(
     session_id: str,

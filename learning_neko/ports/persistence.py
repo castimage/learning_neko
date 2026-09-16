@@ -35,6 +35,9 @@ class SessionRepositoryPort(Protocol):
     # 按会话id取会话
     async def get(self, session_id: str) -> SessionRecord | None: ...
 
+    # 按最近变更时间倒序列出会话，供前端发现既有会话
+    async def list_recent(self, limit: int) -> list[SessionRecord]: ...
+
     # 保存会话快照
     async def save(self, record: SessionRecord) -> None: ...
 

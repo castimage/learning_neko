@@ -550,6 +550,10 @@ class SqlSessionRepository:
     async def get(self, session_id: str) -> SessionRecord | None:
         return await self._database.run(lambda session: self._load(session, session_id))
 
+    # 按最近变更时间倒序列出会话
+    async def list_recent(self, limit: int) -> list[SessionRecord]:
+        return await self._database.run(lambda session: self._load_recent(session, limit))
+
     # 覆盖保存会话
     async def save(self, record: SessionRecord) -> None:
         logger.debug(
@@ -594,6 +598,13 @@ class SqlSessionRepository:
     def _load(self, session: Session, session_id: str) -> SessionRecord | None:
         row = session.get(StudySessionRow, session_id)
         return None if row is None else session_row_to_domain(row)
+
+    # 在事务内按最近变更时间倒序取会话
+    def _load_recent(self, session: Session, limit: int) -> list[SessionRecord]:
+        rows = session.exec(
+            select(StudySessionRow).order_by(StudySessionRow.updated_at.desc()).limit(limit)
+        ).all()
+        return [session_row_to_domain(row) for row in rows]
 
     # 在事务内写入或更新产物
     def _store_material(self, session: Session, record: MaterialRecord) -> None:

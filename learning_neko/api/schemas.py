@@ -59,6 +59,20 @@ class SessionView(BaseModel):
     updated_at: datetime
 
 
+# 会话列表里的一条，只带定位与状态，不带大纲等重内容
+class SessionSummaryView(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    session_id: str
+    topic: str
+    phase: LearningPhase
+    current_section_index: int
+    section_count: int
+    allowed_actions: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+
 # 产物读写的响应体
 class MaterialView(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -112,6 +126,20 @@ class SummaryView(BaseModel):
     comment: str
     mastery: dict[str, float]
     next_focus: list[str]
+
+
+# 由会话生成会话列表项
+def session_summary_view(record: SessionRecord) -> SessionSummaryView:
+    return SessionSummaryView(
+        session_id=record.session_id,
+        topic=record.topic,
+        phase=record.phase,
+        current_section_index=record.current_section_index,
+        section_count=len(record.outline.outline),
+        allowed_actions=list(allowed_actions(record.phase)),
+        created_at=record.created_at,
+        updated_at=record.updated_at
+    )
 
 
 # 由会话生成会话快照响应
