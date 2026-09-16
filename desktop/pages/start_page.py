@@ -175,6 +175,10 @@ class StartPage(QWidget):
             return
         QMessageBox.critical(self, '生成大纲失败', f'[{code}] {message}')
 
-    # 供主窗口在返回本页时清空状态
+    # 供主窗口在「新建」时清空页面状态
     def reset(self) -> None:
         self.status.setText('')
+        self.doc_box.clear()
+        self.request_edit.clear()
+        self.doc_count.setText('0 字')
+        self.doc_count.setStyleSheet('color: #888;')
