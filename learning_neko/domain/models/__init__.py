@@ -1,6 +1,8 @@
 # 领域模型包标识，并提供把模型列表序列化成json文本的共用助手
 from __future__ import annotations
 
+__version__ = '0.1.1'
+
 import json
 from collections.abc import Sequence
 
