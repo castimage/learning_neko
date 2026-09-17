@@ -55,7 +55,7 @@ class SessionView(BaseModel):
     mistakes: list[Mistake]
     allowed_actions: list[str]
     memory_context: MemoryContext | None = None
-    generated_sections: list[int] = []
+    generated_sections: list[int]
     created_at: datetime
     updated_at: datetime
 
@@ -143,11 +143,11 @@ def session_summary_view(record: SessionRecord) -> SessionSummaryView:
     )
 
 
-# 由会话生成会话快照响应
+# 由会话生成会话快照响应，进度必须由调用方显式给出
 def session_view(
         record: SessionRecord,
-        memory_context: MemoryContext | None = None,
-        generated_sections: list[int] | None = None
+        generated_sections: list[int],
+        memory_context: MemoryContext | None = None
 ) -> SessionView:
     return SessionView(
         session_id=record.session_id,
@@ -160,7 +160,7 @@ def session_view(
         mistakes=list(record.mistakes),
         allowed_actions=list(allowed_actions(record.phase)),
         memory_context=memory_context,
-        generated_sections=generated_sections or [],
+        generated_sections=generated_sections,
         created_at=record.created_at,
         updated_at=record.updated_at
     )

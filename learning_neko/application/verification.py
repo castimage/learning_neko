@@ -28,14 +28,10 @@ CRITERIA: dict[ArtifactKind, str] = {
         '4. 例题是否仅凭本分节正文即可作答，答案与解析是否自洽。\n'
         '5. 关系图中每个节点的 label 是否为资料正文中出现过的概念；其 detail 是否在说明这个节点自己的含义'
         '（说明它是什么、或它会带来什么），而不是在说明另一个节点的含义。\n'
-        '6. 正文里的每个 ![图注](media:id) 占位符是否都能在 media 列表里找到对应的 id。\n'
+        '6. 正文里的每个 ![图注](media:id) 占位符，其 id 是否能在 media 列表里找到，或等于 visualization.id。\n'
         '7. media 中 kind 为 "image"、"audio"、"video" 的条目，其 asset_key 是否逐字出现在 available_assets 里；'
-        'kind 为 "diagram" 或 "animation" 的条目，asset_key 必须是空字符串，'
-        '此时不要因为它是空字符串而判为问题——那是这类素材的正确取值。'
-    ),
-    ArtifactKind.VISUALIZATION: (
-        '1. 每个节点的 label 是否为资料正文中出现过的概念，detail 是否在解释这个节点自己的概念。\n'
-        '2. 图中是否存在与资料正文矛盾的标注。'
+        'kind 为 "diagram" 或 "animation" 的条目，asset_key 必须是空字符串或 null，'
+        '此时不要因为它为空而判为问题——那是这类素材的正确取值。'
     ),
     ArtifactKind.EXERCISES: (
         '1. 每个分节是否都至少有一道对应题目，考点分布是否与大纲篇幅匹配。\n'

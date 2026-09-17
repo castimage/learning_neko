@@ -50,10 +50,11 @@
 - 每种关系优先用最具体的那个 kind，不要一律用 hierarchy 兜底；如果两个概念之间确实同时符合多种关系，选信息量最大的那一种。
 - 每个节点的 label 必须是资料正文中出现过的概念名词；detail 要解释这个节点自己的概念，不要拿 detail 去解释另一个相关概念。
 - 需要配图时先分清两类来源：能由坐标轴与曲线表达清楚的示意图（diagram）、以及随时间变化的动画（animation），这两类由你直接给出绘制规格；除此之外的真实图片、音频与视频（image/audio/video）只能引用 available_assets 中列出的 key，你无法产出这类素材本身。
-- 引用素材时 asset_key 必须逐字取自 available_assets；diagram 与 animation 的 asset_key 一律返回空字符串，并且不要同时给出另一种规格。
-- 素材要出现在正文里的确切位置，就在该处写一个占位符：![图注](media:<id>)，其中 <id> 必须是 media 列表里声明过的 id；占位符不要集中堆在文末。
+- 引用素材时 asset_key 必须逐字取自 available_assets；diagram 与 animation 的 asset_key 一律留空（空字符串或 null 皆可，不要编造 key），并且不要同时给出另一种规格。
+- 素材要出现在正文里的确切位置，就在该处写一个占位符：![图注](media:<id>)，其中 <id> 必须是 media 列表里声明过的 id，**或等于 visualization.id**；占位符不要集中堆在文末。
 - media 里只放正文真正用到的素材；用不上的素材直接不要写进 media，不要为了凑数量而在正文里补占位符。
 - 知识点关系图只用 visualization 表达，不要再用一份 diagram 去重复画同一张图。
+- 知识点关系图也应当出现在正文里的确切位置：先在 visualization.id 里给它一个编号，再在正文讲完相关概念的那一段之后写 ![关系图](media:<visualization.id>)，且两处编号必须逐字一致。这样关系图会嵌在讲解旁边，而不是只能堆在文末。
 
 ## INPUT
 分节标题、目标与概念见上方，生成指令见 gen_instruction，资料原文见 source_document。
@@ -76,10 +77,11 @@
 - material：字符串，学习资料的 Markdown 正文。
 - examples：对象数组，每个元素含 q_id（题目编号，形如 ex-1）、question（题干）、options（选项字符串数组，填空题则返回空数组）、answer（正确答案）、analysis（解析，需点明易错处）、knowledge_point（该题对应的知识点，必须取自本节 section_keywords）、difficulty（取值只能是「基础」或「进阶」）。
 - visualization：对象，描述知识点关系图，含：
+  - id：字符串，这张关系图的编号，供正文占位符 ![关系图](media:<id>) 引用；不要与 media 里的 id 重复。
   - title：字符串，图的标题。
   - direction：字符串，取值只能是 "top_down"、"left_right"、"radial" 之一。
   - nodes：对象数组，每个元素含 id（节点编号，图中唯一）、label（节点显示文本，不超过十五字）、kind（取值只能是 "root"、"concept"、"detail"、"example"、"warning" 之一）、detail（该节点的补充说明）。
-  - edges：对象数组，每个元素含 source（起点节点 id）、target（终点节点 id）、kind（取值只能是 "hierarchy"、"prerequisite"、"related"、"contrast" 之一）、label（边的标签，可为空字符串）。
+  - edges：对象数组，每个元素含 source（起点节点 id）、target（终点节点 id）、kind（取值只能是 "hierarchy"、"prerequisite"、"related"、"contrast" 之一）、label（边的标签，可为空）。
   - groups：对象数组，每个元素含 id（分组编号，图中唯一）、label（该分组的显示名称）、node_ids（该组包含的节点 id 数组，编号必须来自 nodes）；用于把相关节点归为一类，可为空数组。
   - notes：字符串数组，图中需要额外提示的注意事项，可为空数组。
 - media：对象数组，本分节的配图、动画与素材引用，可为空数组。每个元素含：
@@ -87,7 +89,7 @@
   - kind：字符串，取值只能是 "diagram"、"animation"、"image"、"audio"、"video" 之一。
   - caption：字符串，该素材的图注；引用类素材必填。
   - alt：字符串，替代文本，供无法渲染时兜底。
-  - asset_key：字符串；kind 为 image/audio/video 时必填且必须逐字取自 available_assets，kind 为 diagram/animation 时留空字符串。
+  - asset_key：字符串；kind 为 image/audio/video 时必填且必须逐字取自 available_assets，kind 为 diagram/animation 时留空（空字符串或 null）。
   - diagram：对象或 null；仅当 kind 为 "diagram" 时给出，含：
     - title：字符串，图的标题。
     - axis：对象，含 x_label、y_label（坐标轴名称）与 x_min、x_max、y_min、y_max（四个数值，必须满足 x_min < x_max 且 y_min < y_max）。
@@ -102,7 +104,8 @@
     - marks：对象数组，结构同 diagram.marks，可为空数组。
 
 ## EXAMPLES
-一个最小的 visualization 应形如：
+一个最小的 visualization 应形如（正文里相应位置写 `见下图：![学习率对收敛的影响](media:viz1)`）：
+- id：viz1
 - title：学习率对收敛的影响
 - direction：left_right
 - nodes：[{"id": "n1", "label": "学习率", "kind": "root", "detail": "控制每次参数更新的步长"}, {"id": "n2", "label": "学习率过大", "kind": "warning", "detail": "更新步长过大，损失震荡不收敛"}, {"id": "n3", "label": "学习率过小", "kind": "warning", "detail": "收敛速度慢，易停在局部极小"}]
@@ -135,6 +138,7 @@
 - 每道例题的 answer 是否唯一且与 analysis 一致？填空题的 options 是否确实为空数组？
 - visualization 中每条边的 source 与 target 是否都指向 nodes 中真实存在的 id？
 - visualization 中所有枚举字段是否只取了规定字面量？
-- 正文里的每个 ![图注](media:…) 占位符，其 id 是否都在 media 列表里声明过？media 里是否存在写了却没用到的素材？
+- 正文里的每个 ![图注](media:…) 占位符，其 id 是否都在 media 列表里声明过，或等于 visualization.id？media 里是否存在写了却没用到的素材？
+- 关系图是否已经在正文讲完相关概念的那一段之后用 ![关系图](media:<visualization.id>) 内联出现，且两处编号逐字一致？
 - media 中每个 asset_key 是否都能在 available_assets 里逐字找到？diagram 与 animation 的 asset_key 是否都留空了？
 - 若存在 previous_errors，是否已逐条消除？

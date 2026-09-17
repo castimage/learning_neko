@@ -25,11 +25,11 @@ from learning_neko.api.schemas import (
     SummaryView,
     VerdictView
 )
-from learning_neko.application.study_service import StudyService
+from learning_neko.application.study_service import generated_sections_of, StudyService
 from learning_neko.config import PROVIDER_PROFILES, Settings
 from learning_neko.container import Container, ServiceKey
 from learning_neko.domain.errors import ArtifactNotFound, AssetNotFound
-from learning_neko.domain.models.enums import StructuredMode, ArtifactKind
+from learning_neko.domain.models.enums import StructuredMode
 from learning_neko.domain.models.memory import SessionOutcome, TopicMemory
 from learning_neko.ports.assets import AssetCatalogPort
 
@@ -161,7 +161,7 @@ async def start_session(
     service: StudyService = Depends(get_study_service)
 ) -> ApiResponse[SessionView]:
     record, memory_context = await service.start_session(request.source_doc, request.user_request)
-    return ok(session_view(record, memory_context))
+    return ok(session_view(record, [], memory_context))
 
 
 # 读取会话快照列表
@@ -180,11 +180,7 @@ async def read_session(
     service: StudyService = Depends(get_study_service)
 ) -> ApiResponse[SessionView]:
     record, materials = await service.snapshot(session_id)
-    generated = [
-        item.section_index for item in materials if item.artifact_kind is ArtifactKind.MATERIAL
-    ]
-
-    return ok(session_view(record, generated_sections=generated))
+    return ok(session_view(record, generated_sections_of(materials)))
 
 
 # 读取某分节已生成的学习资料
@@ -209,7 +205,8 @@ async def complete_session(
     service: StudyService = Depends(get_study_service)
 ) -> ApiResponse[SessionView]:
     record = await service.complete(session_id)
-    return ok(session_view(record))
+    generated = await service.generated_sections(session_id)
+    return ok(session_view(record, generated_sections=generated))
 
 
 # 生成某分节的资料、例题与关系图

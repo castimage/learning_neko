@@ -62,7 +62,6 @@ class StructuredMode(StrEnum):
 class ArtifactKind(StrEnum):
     OUTLINE = 'outline'
     MATERIAL = 'material'
-    VISUALIZATION = 'visualization'
     EXERCISES = 'exercises'
 
 

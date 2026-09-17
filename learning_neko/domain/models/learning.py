@@ -145,8 +145,8 @@ class MediaAsset(BaseModel):
     id: str
     kind: MediaType
     caption: str
-    alt: str = ''
-    asset_key: str = ''
+    alt: str | None = ''
+    asset_key: str | None = ''
     diagram: DiagramSpec | None = None
     animation: AnimationSpec | None = None
 
@@ -159,8 +159,8 @@ class Exercise(BaseModel):
     question: str
     options: list[str] = Field(default_factory=list)
     answer: str
-    analysis: str = ''
-    knowledge_point: str = ''
+    analysis: str | None = ''
+    knowledge_point: str | None = ''
     difficulty: Annotated[Difficulty, NormalizedEnum] | None = None
     media: list[MediaAsset] = Field(default_factory=list)
 
@@ -220,7 +220,7 @@ class GraphNode(BaseModel):
     id: str
     label: str
     kind: NodeKind
-    detail: str = ''
+    detail: str | None = ''
 
 
 # 关系图的一条边，两端必须指向已声明的节点编号
@@ -230,7 +230,7 @@ class GraphEdge(BaseModel):
     source: str
     target: str
     kind: EdgeKind
-    label: str = ''
+    label: str | None = ''
 
 
 # 把相关节点归为一组的显示分组
@@ -246,6 +246,7 @@ class GraphGroup(BaseModel):
 class VisualizationSpec(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
+    id: str | None = ''
     title: str
     direction: Direction
     nodes: list[GraphNode]

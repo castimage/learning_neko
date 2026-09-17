@@ -70,6 +70,15 @@ def render_outline(outline: Outline) -> str:
     return '\n'.join(lines)
 
 
+# 从产物列表里取出已生成过资料的分节下标，升序去重
+def generated_sections_of(materials: Sequence[MaterialRecord]) -> list[int]:
+    return sorted({
+        item.section_index
+        for item in materials
+        if item.artifact_kind is ArtifactKind.MATERIAL
+    })
+
+
 # 由会话的测验结果算出得分文本
 def score_of(record: SessionRecord) -> str:
     if record.quiz is None:
@@ -318,6 +327,11 @@ class StudyService:
             )
 
         return record, materials
+
+    # 列出已生成过资料的分节下标，供前端展示学习进度
+    async def generated_sections(self, session_id: str) -> list[int]:
+        materials = await self._sessions.list_materials(session_id)
+        return generated_sections_of(materials)
 
     # 按最近变更时间倒序列出会话，供前端发现既有会话
     async def list_recent_sessions(self, limit: int) -> list[SessionRecord]:
@@ -710,7 +724,7 @@ class StudyService:
             record.mistakes.append(
                 Mistake(
                     q_id=item.q_id,
-                    knowledge_point='' if source is None else source.knowledge_point,
+                    knowledge_point='' if source is None else source.knowledge_point or '',
                     reason=item.reason,
                     stage=stage
                 )
