@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 from learning_neko.agents import VerifyInput
 from learning_neko.domain.errors import VerificationFailed
 from learning_neko.domain.models.enums import ArtifactKind, ArtifactStatus, ExhaustedPolicy, VerificationSource
+from learning_neko.domain.models.learning import MaterialBundle
 from learning_neko.domain.models.memory import VerificationError, VerificationLogRecord, VerificationResult
 from learning_neko.ports.llm import AgentResult, VerifierPort
 from learning_neko.ports.persistence import AgentObserverPort
@@ -43,6 +44,33 @@ CRITERIA: dict[ArtifactKind, str] = {
 }
 
 
+# 确定性检查：不依赖模型，先于 LLM 校验执行，命中即直接判不通过
+def local_errors(kind: ArtifactKind, output: BaseModel) -> list[VerificationError]:
+    if kind is not ArtifactKind.MATERIAL or not isinstance(output, MaterialBundle):
+        return []
+
+    graph_id = str(output.visualization.id or '').strip()
+    if not graph_id:
+        return [
+            VerificationError(
+                content='visualization.id 为空',
+                reason='关系图必须带 id，正文才能用占位符把它内联到讲解旁边',
+                fix='给 visualization.id 填一个不与 media 重复的编号，例如 viz1'
+            )
+        ]
+
+    if f'(media:{graph_id})' not in output.material:
+        return [
+            VerificationError(
+                content=f'正文缺少关系图占位符 ![关系图](media:{graph_id})',
+                reason='关系图需要在正文对应段落内联出现，而不是只堆在文末',
+                fix=f'在讲完相关概念的那一段之后补写 ![关系图](media:{graph_id})，编号与 visualization.id 逐字一致'
+            )
+        ]
+
+    return []
+
+
 # 组织校验智能体的复核
 class VerifyPipeline:
     # 保存校验智能体与可观测性仓储
@@ -66,6 +94,16 @@ class VerifyPipeline:
         attempt: int = 1,
         artifact_ref: str | None = None
     ) -> VerificationResult:
+        # 先跑确定性检查，命中就不必再花一次模型调用
+        local = local_errors(kind, output)
+        if local:
+            verdict = VerificationResult(passed=False, errors=local)
+            await self._record(
+                kind, verdict, session_id, attempt, artifact_ref, VerificationSource.LOCAL
+            )
+            logger.warning('本地确定性校验未通过 | kind={} 问题数={}', kind, len(local))
+            return verdict
+
         result = await self._agent.run(
             VerifyInput(
                 artifact_kind=kind,
@@ -86,7 +124,8 @@ class VerifyPipeline:
         verdict: VerificationResult,
         session_id: str | None,
         attempt: int,
-        artifact_ref: str | None
+        artifact_ref: str | None,
+        source: VerificationSource = VerificationSource.LLM
     ) -> None:
         if self._observer is None:
             return
@@ -96,7 +135,7 @@ class VerifyPipeline:
                 artifact_ref=artifact_ref or f"{session_id or '-'}/{kind}",
                 artifact_kind=kind,
                 attempt=attempt,
-                source=VerificationSource.LLM,
+                source=source,
                 passed=verdict.passed,
                 errors=list(verdict.errors),
                 created_at=datetime.now()
