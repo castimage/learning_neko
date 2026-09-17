@@ -40,6 +40,7 @@ class MainWindow(QMainWindow):
         # ③ 接线：页面之间不互相引用，一律经主窗口转发
         self._start_page.session_started.connect(self._on_session_ready)
         self._study_page.session_completed.connect(self._on_session_completed)
+        self._study_page.exam_requested.connect(self._on_session_completed)
         self._exam_page.back_requested.connect(self._back_to_study)
 
         # ④ 启动落在起始页

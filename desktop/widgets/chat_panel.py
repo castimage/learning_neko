@@ -22,6 +22,8 @@ from desktop.workers import run_async
 class ChatPanel(QWidget):
     # 自述状态变化，供外层显示进度
     busy_changed = pyqtSignal(bool)
+    # 收到一次回答后抛出，供外层刷新统计
+    answered = pyqtSignal()
 
     # 客户端由外面注入
     def __init__(self, client: LearningClient, parent: QWidget | None = None) -> None:
@@ -136,6 +138,7 @@ class ChatPanel(QWidget):
             text = f'{text}\n\n---\n\n*疑点：{point}*'
         self._turns.append(('ai', text))
         self._render()
+        self.answered.emit()
 
     # 提问失败
     def _on_error(self, code: str, message: str) -> None:

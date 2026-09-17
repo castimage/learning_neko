@@ -200,6 +200,10 @@ class LearningClient:
     def generate_exercises(self, session_id: str) -> dict[str, Any]:
         return self._request('POST', f'/sessions/{session_id}/exercises/generate')
 
+    # 读取已生成的课后测验，用于重新打开测验页时回填
+    def read_exercises(self, session_id: str) -> dict[str, Any]:
+        return self._request('GET', f'/sessions/{session_id}/exercises')
+
     # 提交课后作答并逐题批阅
     def grade_exercises(self, session_id: str, answers: list[dict[str, Any]]) -> dict[str, Any]:
         return self._request(

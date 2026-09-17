@@ -154,6 +154,7 @@ def test_request_shape() -> None:
         client.check_examples('abc', [{'q_id': 'q1', 'answer': 'A'}])
         client.complete('abc')
         client.generate_exercises('abc')
+        client.read_exercises('abc')
         client.grade_exercises('abc', [{'q_id': 'q1', 'answer': 'A'}])
         client.summarize('abc')
         client.report('abc')
@@ -167,6 +168,7 @@ def test_request_shape() -> None:
         ('POST', '/sessions/abc/examples/check'),
         ('POST', '/sessions/abc/complete'),
         ('POST', '/sessions/abc/exercises/generate'),
+        ('GET', '/sessions/abc/exercises'),
         ('POST', '/sessions/abc/exercises/grade'),
         ('POST', '/sessions/abc/summary'),
         ('GET', '/sessions/abc/report'),
