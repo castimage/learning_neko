@@ -4,7 +4,7 @@ from __future__ import annotations
 from PyQt6.QtGui import QImage
 
 # 公式前景色，适配白底
-FOREGROUND = '#24292f'
+FOREGROUND = '#1f2937'
 # 公式图片底色
 BG_COLOR = '#ffffff'
 # 渲染放大倍数，越大越清晰

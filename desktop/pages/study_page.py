@@ -34,17 +34,17 @@ CANVAS_COLOR = '#ffffff'
 
 # 正文样式：白底黑字，代码块浅灰
 _STYLE_SHEET = """
-body { background-color: #ffffff; color: #24292f; }
+body { background-color: #ffffff; color: #1f2937; }
 p { margin: 6px 0; }
-pre { background-color: #f6f8fa; padding: 8px; }
-code { background-color: #f6f8fa; color: #953800; }
-a { color: #0969da; }
+pre { background-color: #f3f4f6; padding: 8px; }
+code { background-color: #f3f4f6; color: #b45309; }
+a { color: #6366f1; }
 table { border-collapse: collapse; margin: 8px 0; }
-th, td { border: 1px solid #d0d7de; padding: 4px 8px; }
-th { background-color: #f6f8fa; }
-blockquote { border-left: 3px solid #d0d7de; margin: 8px 0; padding-left: 12px; color: #57606a; }
+th, td { border: 1px solid #e5e7eb; padding: 4px 8px; }
+th { background-color: #f3f4f6; }
+blockquote { border-left: 3px solid #e5e7eb; margin: 8px 0; padding-left: 12px; color: #6b7280; }
 img { margin: 8px 0; }
-hr { border: none; border-top: 1px solid #d0d7de; }
+hr { border: none; border-top: 1px solid #e5e7eb; }
 """
 
 
@@ -89,7 +89,7 @@ class StudyPage(QWidget):
 
         # 已生成资料的分节数，直观体现学习进度
         self.progress_label = QLabel('')
-        self.progress_label.setStyleSheet('color: #1a7f37;')
+        self.progress_label.setStyleSheet('color: #10b981;')
 
         # 错题与疑点数量
         self.stats_label = QLabel('')
@@ -103,7 +103,7 @@ class StudyPage(QWidget):
         self.material_box.setPlaceholderText('左侧选择分节后显示资料')
         # 控件自身背景，白底深字
         self.material_box.setStyleSheet(
-            f'QTextBrowser {{ background-color: {CANVAS_COLOR}; color: #24292f; border: none; }}'
+            f'QTextBrowser {{ background-color: {CANVAS_COLOR}; color: #1f2937; border: none; }}'
         )
 
         self.outline_list = QListWidget()
@@ -400,7 +400,7 @@ class StudyPage(QWidget):
         prefix = '▶ ' if current else ''
         suffix = '　✓' if done else ''
         item.setText(f'{prefix}{index + 1}. {title}{suffix}')
-        item.setForeground(QBrush(QColor('#1a7f37' if done else '#24292f')))
+        item.setForeground(QBrush(QColor('#10b981' if done else '#1f2937')))
 
     # 只更新某一节的勾选状态
     def _mark_outline_row(self, index: int | None) -> None:

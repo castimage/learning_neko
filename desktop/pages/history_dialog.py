@@ -32,6 +32,8 @@ class HistoryDialog(QDialog):
         # 选中并确认的会话 id，取消时保持为 None
         self.selected_session_id: str | None = None
         self._summaries: list[dict[str, Any]] = []
+        # 每次加载递增，用来丢弃过期请求的结果
+        self._load_token = 0
         self.setWindowTitle('打开历史会话')
         self.resize(760, 440)
         self._build_ui()
@@ -43,7 +45,7 @@ class HistoryDialog(QDialog):
         self.hint.setStyleSheet('color: #888;')
 
         self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(['主题', '阶段', '分节', '最近更新'])
+        self.table.setHorizontalHeaderLabels(['主题', '阶段', '进度', '最近更新'])
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -78,13 +80,15 @@ class HistoryDialog(QDialog):
 
     # 向后端要最近会话列表
     def _load(self) -> None:
+        self._load_token += 1
+        token = self._load_token
         self.hint.setText('正在读取…')
         run_async(
             self._client.list_sessions,
             PAGE_LIMIT,
             on_start=self._lock,
-            on_ok=self._on_loaded,
-            on_error=self._on_error,
+            on_ok=lambda data, t=token: self._on_loaded(data, t),
+            on_error=lambda code, message, t=token: self._on_error(code, message, t),
             on_finish=self._unlock,
         )
 
@@ -99,7 +103,9 @@ class HistoryDialog(QDialog):
         self.progress.hide()
 
     # 填充表格
-    def _on_loaded(self, data: Any) -> None:
+    def _on_loaded(self, data: Any, token: int) -> None:
+        if token != self._load_token:
+            return
         if not isinstance(data, list):
             self.hint.setText('后端返回了未预期的结构。')
             return
@@ -110,12 +116,12 @@ class HistoryDialog(QDialog):
         for row, item in enumerate(self._summaries):
             topic = item.get('topic') or '未命名主题'
             phase = str(item.get('phase', '?'))
-            section = f'{item.get("current_section_index", 0) + 1}/{item.get("section_count", 0)}'
             updated = _format_time(item.get('updated_at'))
 
             self.table.setItem(row, 0, QTableWidgetItem(topic))
             self.table.setItem(row, 1, QTableWidgetItem(_phase_label(phase)))
-            self.table.setItem(row, 2, QTableWidgetItem(section))
+            # 先占位，稍后用快照里的已生成数覆盖
+            self.table.setItem(row, 2, QTableWidgetItem('…'))
             self.table.setItem(row, 3, QTableWidgetItem(updated))
 
         self.table.resizeColumnsToContents()
@@ -125,11 +131,39 @@ class HistoryDialog(QDialog):
         if self._summaries:
             self.table.selectRow(0)
             self.hint.setText(f'共 {len(self._summaries)} 个会话，双击或点「打开」继续。')
+            self._load_progress(token)
         else:
             self.hint.setText('还没有任何会话，先在起始页开始一次学习吧。')
 
+    # 逐条拉快照，用已生成资料的分节数覆盖进度列
+    def _load_progress(self, token: int) -> None:
+        for row, item in enumerate(self._summaries):
+            session_id = item.get('session_id')
+            if not session_id:
+                continue
+            run_async(
+                self._client.snapshot,
+                session_id,
+                on_ok=lambda data, r=row, t=token: self._on_progress(r, data, t),
+                on_error=lambda code, message, r=row, t=token: None,
+            )
+
+    # 用快照里的已生成数更新某一行
+    def _on_progress(self, row: int, data: Any, token: int) -> None:
+        if token != self._load_token or not isinstance(data, dict):
+            return
+        if row < 0 or row >= self.table.rowCount():
+            return
+
+        generated = data.get('generated_sections') or []
+        total = int(data.get('section_count') or 0)
+        self.table.setItem(row, 2, QTableWidgetItem(f'{len(generated)}/{total}'))
+        self.table.resizeColumnToContents(2)
+
     # 读取失败
-    def _on_error(self, code: str, message: str) -> None:
+    def _on_error(self, code: str, message: str, token: int) -> None:
+        if token != self._load_token:
+            return
         self.hint.setText(f'读取失败：{message}')
         if code == 'client_offline':
             QMessageBox.critical(self, '后端未启动', f'{message}\n\n请先启动后端服务。')

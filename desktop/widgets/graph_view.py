@@ -73,7 +73,7 @@ class NodeItem(QGraphicsPathItem):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setBrush(QBrush(self._fill))
         if self.isSelected():
-            painter.setPen(QPen(QColor('#ffb020'), 2.4))
+            painter.setPen(QPen(QColor('#f59e0b'), 2.4))
         else:
             painter.setPen(QPen(self._border, 1.6))
         painter.drawPath(self.path())
@@ -219,7 +219,7 @@ class ConceptGraphView(QGraphicsView):
         font = QFont()
         font.setPointSize(11)
         text.setFont(font)
-        text.setBrush(QBrush(QColor('#888888')))
+        text.setBrush(QBrush(QColor('#6b7280')))
 
         bounds = text.boundingRect()
         text.setPos(-bounds.width() / 2.0, -bounds.height() / 2.0)
@@ -272,7 +272,7 @@ class ConceptGraphView(QGraphicsView):
             bottom = max(point.y() for point in points) + NODE_HEIGHT + 14.0
 
             frame = QGraphicsRectItem(QRectF(left, top, right - left, bottom - top))
-            frame.setPen(QPen(QColor('#b9c2cc'), 1.2, Qt.PenStyle.DashLine))
+            frame.setPen(QPen(QColor('#cbd5e1'), 1.2, Qt.PenStyle.DashLine))
             frame.setBrush(QBrush(Qt.BrushStyle.NoBrush))
             frame.setZValue(-2.0)
             self._scene.addItem(frame)
@@ -283,7 +283,7 @@ class ConceptGraphView(QGraphicsView):
                 font = QFont()
                 font.setPointSize(8)
                 text.setFont(font)
-                text.setBrush(QBrush(QColor('#57606a')))
+                text.setBrush(QBrush(QColor('#6b7280')))
                 text.setPos(left + 8.0, top + 3.0)
                 text.setZValue(-1.5)
                 self._scene.addItem(text)

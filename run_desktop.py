@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import QApplication
 
 from desktop.api.client import LearningClient
 from desktop.main_window import MainWindow
+from desktop.theme import apply_theme
 
 # 后端地址，后续可改为从配置文件读取
 BACKEND_URL = 'http://127.0.0.1:8000'
@@ -17,6 +18,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName('learning-neko')
     app.setOrganizationName('jiangxingzhao')
+    apply_theme(app)
 
     client = LearningClient(BACKEND_URL)
     window = MainWindow(client)

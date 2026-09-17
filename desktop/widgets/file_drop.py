@@ -15,12 +15,12 @@ FILE_FILTER = (
 
 # 普通态与拖拽悬停态的外观
 _IDLE_STYLE = (
-    'QFrame#fileDropArea { border: 2px dashed #c0c7d0; border-radius: 10px;'
-    ' background-color: #fafbfc; }'
+    'QFrame#fileDropArea { border: 2px dashed #cbd5e1; border-radius: 10px;'
+    ' background-color: #f8fafc; }'
 )
 _ACTIVE_STYLE = (
-    'QFrame#fileDropArea { border: 2px dashed #0969da; border-radius: 10px;'
-    ' background-color: #f0f6ff; }'
+    'QFrame#fileDropArea { border: 2px dashed #6366f1; border-radius: 10px;'
+    ' background-color: #eef2ff; }'
 )
 _PROMPT = '把资料文件拖到这里，或点击选择文件'
 _PROMPT_DETAIL = '支持 PDF、Word、EPUB 及 txt / md 等文本文件'
@@ -44,7 +44,7 @@ class FileDropArea(QFrame):
     def _build_ui(self) -> None:
         self.title = QLabel(_PROMPT)
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.title.setStyleSheet('color: #24292f; font-size: 14px;')
+        self.title.setStyleSheet('color: #1f2937; font-size: 14px;')
         self.title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
         self.detail = QLabel(_PROMPT_DETAIL)

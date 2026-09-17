@@ -74,7 +74,7 @@ class ChartView(QGraphicsView):
         font = QFont()
         font.setPointSize(11)
         text.setFont(font)
-        text.setBrush(QBrush(QColor('#888888')))
+        text.setBrush(QBrush(QColor('#6b7280')))
 
         bounds = text.boundingRect()
         text.setPos(-bounds.width() / 2.0, -bounds.height() / 2.0)
