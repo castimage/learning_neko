@@ -345,7 +345,8 @@ class StudyService:
 
     # 读取某分节已生成的材料，缺失时报错
     async def read_material(self, session_id: str, section_index: int) -> MaterialRecord:
-        stored = await self._sessions.get_material(session_id, section_index, ArtifactKind.MATERIAL)
+        record = await self.load_session(session_id)
+        stored = await self._sessions.get_material(record.session_id, section_index, ArtifactKind.MATERIAL)
         if stored is None:
             raise ArtifactNotFound(
                 '该分节尚未生成学习资料',
@@ -575,6 +576,19 @@ class StudyService:
         )
 
         return record, stored
+
+    # 读取已生成的课后习题
+    async def read_exercises(self, session_id: str) -> MaterialRecord:
+        record = await self.load_session(session_id)
+        stored = await self._sessions.get_material(record.session_id, 0, ArtifactKind.EXERCISES)
+        if stored is None:
+            raise ArtifactNotFound(
+                '该会话尚未生成课后测验，请先出题',
+                session_id=session_id,
+                artifact_kind=str(ArtifactKind.EXERCISES)
+            )
+
+        return stored
 
     # 批阅课后作答并记录得分与错题
     @guarded('grade_exercises')
