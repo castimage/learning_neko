@@ -11,7 +11,7 @@ ALLOWED_TRANSITIONS: dict[LearningPhase, tuple[LearningPhase, ...]] = {
 
 PHASE_ACTIONS: dict[LearningPhase, tuple[str, ...]] = {
     LearningPhase.LEARNING: ('generate_material', 'qa', 'check_example', 'complete'),
-    LearningPhase.COMPLETED: ('generate_exercises', 'grade_exercises', 'summarize', 'read_report')
+    LearningPhase.COMPLETED: ('generate_exercises', 'read_exercises', 'grade_exercises', 'summarize', 'read_report')
 }
 
 

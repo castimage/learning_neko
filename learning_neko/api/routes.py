@@ -278,6 +278,16 @@ async def grade_exercises(
     return ok(grade_view(session_id, verdicts, total))
 
 
+# 读取已生成的课后习题
+@study_router.get('/{session_id}/exercises', response_model=ApiResponse[MaterialView], summary='读取已生成的课后习题')
+async def read_exercises(
+    session_id: str,
+    service: StudyService = Depends(get_study_service)
+) -> ApiResponse[MaterialView]:
+    stored = await service.read_exercises(session_id)
+    return ok(material_view(stored))
+
+
 # 汇总本次学习并写入记忆
 @study_router.post('/{session_id}/summary', response_model=ApiResponse[SummaryView], summary='汇总本次学习并写入记忆文件')
 async def summarize(
