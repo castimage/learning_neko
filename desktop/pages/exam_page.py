@@ -130,11 +130,58 @@ class ExamPage(QWidget):
         self.topic_label.setText(f'课后测验 · {session.get("topic") or "未命名主题"}')
         self.phase_label.setText(f'阶段：{session.get("phase", "?")}')
 
-        # 切到本页时重置，题目需重新生成（后端没有读题库的接口）
+        # 切到本页先清空，再向后端读已生成的题回填
         self.quiz_panel.load_exercises(self._session_id, [])
         self.report_box.clear()
         self.summary_btn.setEnabled(False)
-        self.status.setText('点「生成课后测验」，系统会依据全章知识点出题。')
+        self.status.setText('正在读取已有题目…')
+        self._load_existing_exercises()
+
+    # 读取已生成的课后测验，避免每次进来都要重新生成
+    def _load_existing_exercises(self) -> None:
+        if not self._session_id:
+            return
+
+        session_id = self._session_id
+        run_async(
+            self._client.read_exercises,
+            session_id,
+            on_ok=lambda data, s=session_id: self._on_existing_loaded(s, data),
+            on_error=lambda code, message, s=session_id: self._on_existing_error(s, code, message),
+        )
+
+    # 回填历史题目
+    def _on_existing_loaded(self, session_id: str, data: Any) -> None:
+        if session_id != self._session_id:
+            return
+        if not isinstance(data, dict):
+            self.status.setText('后端返回了未预期的结构。')
+            return
+
+        exercise_set = data.get('exercise_set') or {}
+        exercises = [
+            item for item in (exercise_set.get('exercises') or [])
+            if isinstance(item, dict)
+        ]
+        if not exercises:
+            self.status.setText('还没有题目。点「生成课后测验」开始。')
+            return
+
+        self.quiz_panel.load_exercises(self._session_id, exercises)
+        self.summary_btn.setEnabled(True)
+        self.status.setText(f'已读取已有 {len(exercises)} 道题，可直接作答。')
+
+    # 读取失败不弹窗，按错误码给出提示并保持空题状态
+    def _on_existing_error(self, session_id: str, code: str, message: str) -> None:
+        if session_id != self._session_id:
+            return
+        if code == 'artifact_not_found':
+            self.status.setText('还没有题目。点「生成课后测验」开始。')
+            return
+        if code == 'client_offline':
+            self.status.setText('后端未启动，无法读取已有题目。')
+            return
+        self.status.setText(f'读取已有题目失败：{message}')
 
     # 生成课后测验
     def _on_generate(self) -> None:
@@ -230,7 +277,7 @@ class ExamPage(QWidget):
         if code == 'phase_guard_violation':
             QMessageBox.warning(
                 self, '当前阶段不允许该操作',
-                f'{message}\n\n课后测验需要在「已学完」阶段进行。'
+                f'{message}\n\n请确认当前会话阶段与操作是否匹配。'
             )
             return
         if code == 'client_offline':

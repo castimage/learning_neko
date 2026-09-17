@@ -180,7 +180,7 @@ def _replace_media(
             caption = str(item.get('caption') or alt or media_id)
             return f'**【图】{caption}**'
 
-        # flowchart 由客户端把知识点关系画成图
+        # flowchart 由客户端把知识点关系画成图，旁附交互查看入口
         if kind == 'flowchart':
             spec = item.get('flowchart')
             if isinstance(spec, dict):
@@ -191,7 +191,7 @@ def _replace_media(
                 )
                 if image is not None and not image.isNull():
                     caption = str(item.get('caption') or alt or media_id)
-                    return f'![{caption}]({image_to_data_url(image)})'
+                    return f'![{caption}]({image_to_data_url(image)})　[查看详细图](graph://show)'
             caption = str(item.get('caption') or alt or media_id)
             return f'**【图】{caption}**'
 

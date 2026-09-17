@@ -4,11 +4,12 @@ from __future__ import annotations
 from typing import Any
 
 from PyQt6.QtCore import Qt, QTimer, QUrl, pyqtSignal
-from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtGui import QBrush, QColor, QDesktopServices
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QProgressBar,
     QPushButton,
@@ -51,6 +52,8 @@ hr { border: none; border-top: 1px solid #d0d7de; }
 class StudyPage(QWidget):
     # 会话进入「已学完」时对外抛出，供主窗口切到课后测验
     session_completed = pyqtSignal(object)
+    # 用户主动进入课后测验（学习中或已学完都可用）
+    exam_requested = pyqtSignal(object)
 
     # 客户端由主窗口注入
     def __init__(self, client: LearningClient, parent: QWidget | None = None) -> None:
@@ -83,6 +86,14 @@ class StudyPage(QWidget):
 
         self.phase_label = QLabel('')
         self.phase_label.setStyleSheet('color: #888;')
+
+        # 已生成资料的分节数，直观体现学习进度
+        self.progress_label = QLabel('')
+        self.progress_label.setStyleSheet('color: #1a7f37;')
+
+        # 错题与疑点数量
+        self.stats_label = QLabel('')
+        self.stats_label.setStyleSheet('color: #888;')
 
         self.material_box = QTextBrowser()
         self.material_box.setReadOnly(True)
@@ -162,6 +173,11 @@ class StudyPage(QWidget):
         self.report_btn = QPushButton('查看学习报告')
         self.report_btn.hide()
 
+        # 不必学完全部，学习中也能进入课后测验
+        self.exam_btn = QPushButton('进入课后测验')
+        self.exam_btn.setToolTip('不必学完全部，随时可以做课后测验')
+        self.exam_btn.hide()
+
         # 主区横向：大纲 / 正文 / 三栏可开关的详情
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.main_splitter.addWidget(self.outline_list)
@@ -177,11 +193,14 @@ class StudyPage(QWidget):
         header.setSpacing(2)
         header.addWidget(self.topic_label)
         header.addWidget(self.phase_label)
+        header.addWidget(self.progress_label)
+        header.addWidget(self.stats_label)
 
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.outline_toggle_btn)
         toolbar.addWidget(self.generate_btn)
         toolbar.addWidget(self.complete_btn)
+        toolbar.addWidget(self.exam_btn)
         toolbar.addWidget(self.report_btn)
         toolbar.addWidget(self.progress, 1)
         toolbar.addWidget(self.qa_toggle_btn)
@@ -203,9 +222,13 @@ class StudyPage(QWidget):
         self.generate_btn.clicked.connect(self._on_generate_clicked)
         self.examples_regen_btn.clicked.connect(self._on_generate_clicked)
         self.complete_btn.clicked.connect(self._on_complete_clicked)
+        self.exam_btn.clicked.connect(lambda: self.exam_requested.emit(self._session))
         self.report_btn.clicked.connect(self._on_view_report)
         self.outline_toggle_btn.toggled.connect(self._on_toggle_outline)
         self.material_box.anchorClicked.connect(self._on_material_link)
+        # 作答与答疑后刷新错题/疑点统计
+        self.examples_panel.graded.connect(lambda _: self._refresh_stats_from_server())
+        self.chat_panel.answered.connect(self._refresh_stats_from_server)
 
     # 折叠或展开左侧大纲，给正文腾出空间
     def _on_toggle_outline(self, collapsed: bool) -> None:
@@ -332,19 +355,16 @@ class StudyPage(QWidget):
             f'｜可用操作：{"、".join(session.get("allowed_actions") or [])}'
         )
 
-        # 只有 learning 阶段才允许切到完成
+        # 允许动作决定后续按钮显隐；完成按钮是否可点由 _refresh_complete_btn 统一算
         allowed = set(session.get('allowed_actions') or [])
-        self.complete_btn.setEnabled('complete' in allowed)
-        self.complete_btn.setText('完成学习' if 'complete' in allowed else '已完成')
         # 学完之后才显示查看报告
         self.report_btn.setVisible(session.get('phase') == 'completed')
+        # 课后测验在学习中与已学完都允许
+        self.exam_btn.setVisible('generate_exercises' in allowed)
 
         # 批量填充时屏蔽信号，避免每加一项都触发一次回调
-        self.outline_list.blockSignals(True)
-        self.outline_list.clear()
-        for index, item in enumerate(self._sections, start=1):
-            self.outline_list.addItem(f'{index}. {item.get("title", "未命名")}')
-        self.outline_list.blockSignals(False)
+        self._rebuild_outline()
+        self._refresh_stats()
 
         memory = session.get('memory_context') or {}
         weak = memory.get('weak_points') or []
@@ -360,6 +380,87 @@ class StudyPage(QWidget):
         # 默认选中第一节，让右侧立刻有内容
         if self._sections:
             self.outline_list.setCurrentRow(0)
+
+    # 重建大纲列表，已生成资料的分节打勾标绿
+    def _rebuild_outline(self) -> None:
+        self.outline_list.blockSignals(True)
+        self.outline_list.clear()
+        for index in range(len(self._sections)):
+            item = QListWidgetItem()
+            self._apply_outline_style(item, index)
+            self.outline_list.addItem(item)
+        self.outline_list.blockSignals(False)
+        self._refresh_progress()
+
+    # 按是否已生成资料与是否为后端当前节设置文案与颜色
+    def _apply_outline_style(self, item: QListWidgetItem, index: int) -> None:
+        title = self._sections[index].get('title') or '未命名'
+        done = index in self._generated
+        current = index == self._session.get('current_section_index')
+        prefix = '▶ ' if current else ''
+        suffix = '　✓' if done else ''
+        item.setText(f'{prefix}{index + 1}. {title}{suffix}')
+        item.setForeground(QBrush(QColor('#1a7f37' if done else '#24292f')))
+
+    # 只更新某一节的勾选状态
+    def _mark_outline_row(self, index: int | None) -> None:
+        if index is None or index < 0 or index >= self.outline_list.count():
+            return
+        item = self.outline_list.item(index)
+        self._apply_outline_style(item, index)
+
+    # 刷新顶部进度文字
+    def _refresh_progress(self) -> None:
+        total = len(self._sections)
+        done = sum(1 for index in self._generated if 0 <= index < total)
+        self.progress_label.setText(f'学习进度：已生成资料 {done} / {total} 节')
+        self._refresh_complete_btn()
+
+    # 是否所有分节都已生成资料
+    def _all_generated(self) -> bool:
+        return bool(self._sections) and all(
+            index in self._generated for index in range(len(self._sections))
+        )
+
+    # 只有所有分节都生成资料后才允许点「完成学习」
+    def _refresh_complete_btn(self) -> None:
+        allowed = set(self._session.get('allowed_actions') or [])
+        if 'complete' not in allowed:
+            self.complete_btn.setText('已完成')
+            self.complete_btn.setEnabled(False)
+            self.complete_btn.setToolTip('')
+            return
+
+        ready = self._all_generated()
+        self.complete_btn.setText('完成学习')
+        self.complete_btn.setEnabled(ready)
+        self.complete_btn.setToolTip('' if ready else '请先为所有分节生成学习资料')
+
+    # 刷新错题与疑点数量
+    def _refresh_stats(self) -> None:
+        mistakes = len(self._session.get('mistakes') or [])
+        doubts = len(self._session.get('doubts') or [])
+        self.stats_label.setText(f'错题 {mistakes} 条　疑点 {doubts} 条')
+
+    # 作答/答疑后按服务端快照刷新统计，只动数字不动正文与题目
+    def _refresh_stats_from_server(self) -> None:
+        if not self._session_id:
+            return
+        session_id = self._session_id
+        run_async(
+            self._client.snapshot,
+            session_id,
+            on_ok=lambda data, s=session_id: self._apply_stats(s, data),
+            on_error=lambda code, message: None,
+        )
+
+    # 把最新错题与疑点写回本地会话并刷新显示
+    def _apply_stats(self, session_id: str, data: Any) -> None:
+        if session_id != self._session_id or not isinstance(data, dict):
+            return
+        self._session['mistakes'] = data.get('mistakes') or []
+        self._session['doubts'] = data.get('doubts') or []
+        self._refresh_stats()
 
     # 切换分节时刷新右侧正文
     def _on_section_changed(self, row: int) -> None:
@@ -500,6 +601,7 @@ class StudyPage(QWidget):
         self.generate_btn.setEnabled(False)
         self.examples_regen_btn.setEnabled(False)
         self.complete_btn.setEnabled(False)
+        self.exam_btn.setEnabled(False)
         self.outline_list.setEnabled(False)
         self.outline_toggle_btn.setEnabled(False)
         for button in (
@@ -516,6 +618,7 @@ class StudyPage(QWidget):
         self.outline_list.setEnabled(True)
         self.outline_toggle_btn.setEnabled(True)
         self.examples_regen_btn.setEnabled(True)
+        self.exam_btn.setEnabled(True)
         for button in (
             self.qa_toggle_btn,
             self.examples_toggle_btn,
@@ -525,9 +628,8 @@ class StudyPage(QWidget):
             button.setEnabled(True)
         self.progress.hide()
         self._refresh_generate_btn(self.outline_list.currentRow())
-        # 完成按钮的状态由阶段决定，重新读会话
-        allowed = set(self._session.get('allowed_actions') or [])
-        self.complete_btn.setEnabled('complete' in allowed)
+        # 完成按钮是否可点由分节生成情况决定
+        self._refresh_complete_btn()
 
     # 生成成功：记录并展示
     def _on_generated(self, row: int, data: Any, session_id: str) -> None:
@@ -540,6 +642,8 @@ class StudyPage(QWidget):
         self._generated.add(row)
         bundle = data.get('bundle') or {}
         self._bundles[row] = bundle          # 缓存正文
+        self._mark_outline_row(row)
+        self._refresh_progress()
 
         status = data.get('status', '')
         attempts = data.get('attempts', 0)
@@ -555,7 +659,11 @@ class StudyPage(QWidget):
             f'｜关系图 {nodes} 节点｜校验 {attempts} 轮{warn}'
         )
         # 后端生成时会把当前分节指针移到本节，本地同步后例题才能立刻判定
+        previous = self._session.get('current_section_index')
         self._session['current_section_index'] = row
+        if previous != row:
+            self._mark_outline_row(previous)
+            self._mark_outline_row(row)
         # 只有用户还停在本次生成的分节时才刷新界面
         if self.outline_list.currentRow() == row:
             self._render_section(row)
@@ -594,6 +702,8 @@ class StudyPage(QWidget):
 
         self._generated.add(row)
         self._bundles[row] = data.get('bundle') or {}
+        self._mark_outline_row(row)
+        self._refresh_progress()
         if self.outline_list.currentRow() == row:
             self._render_section(row)
 
@@ -604,6 +714,8 @@ class StudyPage(QWidget):
         self._loading.discard(row)
         if code == 'artifact_not_found':
             self._generated.discard(row)
+            self._mark_outline_row(row)
+            self._refresh_progress()
         self.status.setText(f'读取已生成资料失败：{message}')
         if self.outline_list.currentRow() == row:
             self._render_section(row)
@@ -637,6 +749,17 @@ class StudyPage(QWidget):
     # 切换到学习完毕，需先确认，因为不可回退
     def _on_complete_clicked(self) -> None:
         if not self._session_id:
+            return
+
+        # 强制校验：还有分节没生成资料就不允许完成
+        missing = [index for index in range(len(self._sections)) if index not in self._generated]
+        if missing:
+            titles = '、'.join(f'第 {index + 1} 节' for index in missing)
+            QMessageBox.warning(
+                self, '还有分节未生成资料',
+                f'以下分节还没有生成学习资料：\n{titles}\n\n'
+                '请先为所有分节生成资料，再完成学习。'
+            )
             return
 
         answer = QMessageBox.question(

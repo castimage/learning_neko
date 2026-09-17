@@ -170,8 +170,8 @@ def _paint_edge_label(painter: QPainter, text: str, point: QPointF, color: QColo
 
 # 节点提示：名称加释义
 def _tooltip_of(node: dict[str, Any]) -> str:
-    label = str(node.get('label', ''))
-    detail = str(node.get('detail', ''))
+    label = str(node.get('label') or '')
+    detail = str(node.get('detail') or '')
     return f'{label}\n\n{detail}' if detail else label
 
 
