@@ -29,13 +29,13 @@ from desktop.widgets.graph_layout import (
 BG_COLOR = '#ffffff'
 
 # 线条与文字配色，适配白底
-AXIS_COLOR = '#8a8a8a'
-TEXT_COLOR = '#24292f'
-LABEL_COLOR = '#57606a'
-LINE_COLOR = '#0969da'
-TITLE_COLOR = '#24292f'
+AXIS_COLOR = '#94a3b8'
+TEXT_COLOR = '#1f2937'
+LABEL_COLOR = '#6b7280'
+LINE_COLOR = '#6366f1'
+TITLE_COLOR = '#1f2937'
 # 多条曲线依次取用的颜色，保证同一张图里能区分
-SERIES_COLORS = (LINE_COLOR, '#cf222e', '#1a7f37', '#9a6700', '#8250df', '#0550ae')
+SERIES_COLORS = (LINE_COLOR, '#ef4444', '#10b981', '#d97706', '#8b5cf6', '#2563eb')
 
 
 # 把 QImage 编码成 PNG 的 data URL，便于内嵌进 HTML
@@ -308,24 +308,24 @@ GRAPH_ARROW_SIZE = 10.0
 
 # 各节点类型的 (填充色, 边框色, 文字色)，适配白底正文
 GRAPH_NODE_STYLE: dict[str, tuple[str, str, str]] = {
-    'root': ('#dbe6f6', '#5b8dd9', '#1b2a44'),
-    'concept': ('#e6eef8', '#4a7db5', '#20303f'),
-    'detail': ('#eef1f4', '#8a929b', '#333333'),
-    'example': ('#e2f0d9', '#5f8a4a', '#2f3a2a'),
-    'warning': ('#fbe4e4', '#d06a6a', '#5a2020'),
+    'root': ('#eef2ff', '#818cf8', '#312e81'),
+    'concept': ('#eef2ff', '#6366f1', '#312e81'),
+    'detail': ('#f1f5f9', '#94a3b8', '#1f2937'),
+    'example': ('#ecfdf5', '#10b981', '#065f46'),
+    'warning': ('#fef2f2', '#ef4444', '#991b1b'),
 }
-GRAPH_DEFAULT_NODE_STYLE = ('#eef1f4', '#8a929b', '#333333')
+GRAPH_DEFAULT_NODE_STYLE = ('#f1f5f9', '#94a3b8', '#1f2937')
 
 # 各边类型的 (颜色, 线型, 是否带箭头)
 GRAPH_EDGE_STYLE: dict[str, tuple[str, Qt.PenStyle, bool]] = {
-    'contains': ('#4a7db5', Qt.PenStyle.SolidLine, True),
-    'hierarchy': ('#5f8a4a', Qt.PenStyle.SolidLine, True),
-    'prerequisite': ('#b58a4a', Qt.PenStyle.SolidLine, True),
-    'causes': ('#a04a4a', Qt.PenStyle.SolidLine, True),
-    'contrast': ('#8a5aa0', Qt.PenStyle.DashLine, False),
-    'related': ('#5a5a5a', Qt.PenStyle.DotLine, False),
+    'contains': ('#6366f1', Qt.PenStyle.SolidLine, True),
+    'hierarchy': ('#10b981', Qt.PenStyle.SolidLine, True),
+    'prerequisite': ('#d97706', Qt.PenStyle.SolidLine, True),
+    'causes': ('#ef4444', Qt.PenStyle.SolidLine, True),
+    'contrast': ('#a855f7', Qt.PenStyle.DashLine, False),
+    'related': ('#64748b', Qt.PenStyle.DotLine, False),
 }
-GRAPH_DEFAULT_EDGE_STYLE = ('#5a5a5a', Qt.PenStyle.DotLine, False)
+GRAPH_DEFAULT_EDGE_STYLE = ('#64748b', Qt.PenStyle.DotLine, False)
 
 
 # 把 visualization 规格画成图片，节点按层级排布、有向边带箭头
@@ -396,7 +396,7 @@ def _draw_graph_groups(
         right = max(point.x() for point in points) + GRAPH_NODE_WIDTH + 12.0
         bottom = max(point.y() for point in points) + GRAPH_NODE_HEIGHT + 12.0
 
-        painter.setPen(QPen(QColor('#b9c2cc'), 1.2, Qt.PenStyle.DashLine))
+        painter.setPen(QPen(QColor('#cbd5e1'), 1.2, Qt.PenStyle.DashLine))
         painter.drawRoundedRect(QRectF(left, top, right - left, bottom - top), 8.0, 8.0)
 
         label = str(group.get('label') or '')
@@ -404,7 +404,7 @@ def _draw_graph_groups(
             font = QFont()
             font.setPointSize(8)
             painter.setFont(font)
-            painter.setPen(QPen(QColor('#57606a')))
+            painter.setPen(QPen(QColor('#6b7280')))
             painter.drawText(
                 QRectF(left + 8.0, top + 3.0, right - left - 16.0, 16.0),
                 Qt.AlignmentFlag.AlignLeft,

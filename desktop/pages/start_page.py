@@ -137,7 +137,7 @@ class StartPage(QWidget):
             f'已选择：{source.name}｜{len(document)} 字'
             + ('（较长，生成会慢一些）' if too_long else '')
         )
-        self.file_info.setStyleSheet('color: #d9534f;' if too_long else 'color: #888;')
+        self.file_info.setStyleSheet('color: #ef4444;' if too_long else 'color: #888;')
 
     # 校验输入并提交
     def _on_start_clicked(self) -> None:

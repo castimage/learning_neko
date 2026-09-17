@@ -28,17 +28,17 @@ CANVAS_COLOR = '#ffffff'
 
 # 报告区样式：白底黑字
 _STYLE_SHEET = """
-body { background-color: #ffffff; color: #24292f; }
+body { background-color: #ffffff; color: #1f2937; }
 p { margin: 6px 0; }
-h1, h2, h3 { color: #24292f; }
-pre { background-color: #f6f8fa; padding: 8px; }
-code { background-color: #f6f8fa; color: #953800; }
-a { color: #0969da; }
+h1, h2, h3 { color: #1f2937; }
+pre { background-color: #f3f4f6; padding: 8px; }
+code { background-color: #f3f4f6; color: #b45309; }
+a { color: #6366f1; }
 table { border-collapse: collapse; margin: 8px 0; }
-th, td { border: 1px solid #d0d7de; padding: 4px 8px; }
-th { background-color: #f6f8fa; }
-blockquote { border-left: 3px solid #d0d7de; margin: 8px 0; padding-left: 12px; color: #57606a; }
-hr { border: none; border-top: 1px solid #d0d7de; }
+th, td { border: 1px solid #e5e7eb; padding: 4px 8px; }
+th { background-color: #f3f4f6; }
+blockquote { border-left: 3px solid #e5e7eb; margin: 8px 0; padding-left: 12px; color: #6b7280; }
+hr { border: none; border-top: 1px solid #e5e7eb; }
 """
 
 
@@ -58,10 +58,10 @@ class ExamPage(QWidget):
     # 搭控件树
     def _build_ui(self) -> None:
         self.topic_label = QLabel('课后测验')
-        self.topic_label.setStyleSheet('font-size: 16px; font-weight: bold; color: #24292f;')
+        self.topic_label.setStyleSheet('font-size: 16px; font-weight: bold; color: #1f2937;')
 
         self.phase_label = QLabel('')
-        self.phase_label.setStyleSheet('color: #57606a;')
+        self.phase_label.setStyleSheet('color: #6b7280;')
 
         self.back_btn = QPushButton('重新学习')
         self.back_btn.setToolTip('返回学习页复习已生成的资料（学习阶段已结束，不能再生成）')
@@ -82,7 +82,7 @@ class ExamPage(QWidget):
         self.progress.hide()
 
         self.status = QLabel('')
-        self.status.setStyleSheet('color: #57606a;')
+        self.status.setStyleSheet('color: #6b7280;')
         self.status.setWordWrap(True)
 
         # 左：作答区；右：报告区
@@ -97,7 +97,7 @@ class ExamPage(QWidget):
         self.report_box.setOpenExternalLinks(True)
         self.report_box.setPlaceholderText('批阅后这里显示学习报告')
         self.report_box.setStyleSheet(
-            f'QTextBrowser {{ background-color: {CANVAS_COLOR}; color: #24292f; border: none; }}'
+            f'QTextBrowser {{ background-color: {CANVAS_COLOR}; color: #1f2937; border: none; }}'
         )
 
         splitter = QSplitter(Qt.Orientation.Horizontal)

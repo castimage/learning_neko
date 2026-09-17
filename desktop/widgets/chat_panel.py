@@ -89,13 +89,13 @@ class ChatPanel(QWidget):
 
         if not available:
             self.hint.setText(f'「{title}」尚未生成资料，先生成后即可提问。')
-            self.hint.setStyleSheet('color: #d9534f;')
+            self.hint.setStyleSheet('color: #ef4444;')
         elif backend_index is not None and backend_index != index:
             self.hint.setText(
                 f'⚠️ 后端记录的提问分节是第 {backend_index + 1} 节，'
                 f'与当前第 {index + 1} 节不同，回答可能不对题。'
             )
-            self.hint.setStyleSheet('color: #d9822b;')
+            self.hint.setStyleSheet('color: #f59e0b;')
         else:
             self.hint.setText(f'当前提问针对：{title}')
             self.hint.setStyleSheet('color: #888;')

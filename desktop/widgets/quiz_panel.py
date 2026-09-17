@@ -40,7 +40,7 @@ class QuestionCard(QFrame):
         self._analysis: QLabel | None = None
         self._build_ui(index)
         self.setStyleSheet(
-            'QFrame#card { background-color: #ffffff; border: 1px solid #d0d7de;'
+            'QFrame#card { background-color: #ffffff; border: 1px solid #e5e7eb;'
             ' border-radius: 6px; }'
         )
 
@@ -52,11 +52,11 @@ class QuestionCard(QFrame):
 
         # 题号、难度与知识点
         head = QLabel(f'第 {index} 题　{difficulty}　{knowledge}')
-        head.setStyleSheet('color: #57606a; font-size: 12px;')
+        head.setStyleSheet('color: #6b7280; font-size: 12px;')
 
         text = QLabel(question)
         text.setWordWrap(True)
-        text.setStyleSheet('color: #24292f; font-weight: bold;')
+        text.setStyleSheet('color: #1f2937; font-weight: bold;')
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
@@ -68,7 +68,7 @@ class QuestionCard(QFrame):
             self._group = QButtonGroup(self)
             for position, option in enumerate(self._options):
                 radio = QRadioButton(option)
-                radio.setStyleSheet('color: #24292f;')
+                radio.setStyleSheet('color: #1f2937;')
                 self._group.addButton(radio, position)
                 layout.addWidget(radio)
             self._group.buttonToggled.connect(lambda *_: self.changed.emit())
@@ -84,7 +84,7 @@ class QuestionCard(QFrame):
         self._verdict.hide()
         self._analysis = QLabel()
         self._analysis.setWordWrap(True)
-        self._analysis.setStyleSheet('color: #57606a;')
+        self._analysis.setStyleSheet('color: #6b7280;')
         self._analysis.hide()
         layout.addWidget(self._verdict)
         layout.addWidget(self._analysis)
@@ -130,8 +130,8 @@ class QuestionCard(QFrame):
         mark = '✓ 正确' if correct else '✗ 错误'
         self._verdict.setText(f'{mark}　{reason}' if reason else mark)
         self._verdict.setStyleSheet(
-            'color: #1a7f37; font-weight: bold;' if correct
-            else 'color: #cf222e; font-weight: bold;'
+            'color: #10b981; font-weight: bold;' if correct
+            else 'color: #ef4444; font-weight: bold;'
         )
         self._verdict.show()
 
@@ -180,7 +180,7 @@ class QuizPanel(QWidget):
     def _build_ui(self) -> None:
         self.hint = QLabel('')
         self.hint.setWordWrap(True)
-        self.hint.setStyleSheet('color: #57606a;')
+        self.hint.setStyleSheet('color: #6b7280;')
 
         # 题目区放进滚动容器，题目多时不会撑破窗口
         self.cards_host = QWidget()
@@ -203,7 +203,7 @@ class QuizPanel(QWidget):
         self.submit_btn.clicked.connect(self._on_submit)
 
         self.score_label = QLabel('')
-        self.score_label.setStyleSheet('font-weight: bold; color: #24292f;')
+        self.score_label.setStyleSheet('font-weight: bold; color: #1f2937;')
 
         bottom = QHBoxLayout()
         bottom.addWidget(self.score_label, 1)

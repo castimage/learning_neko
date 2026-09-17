@@ -12,6 +12,7 @@ from desktop.pages.start_page import StartPage
 from desktop.pages.study_page import StudyPage
 from desktop.workers import run_async
 from desktop.pages.exam_page import ExamPage
+from desktop.theme import build_app_icon
 
 
 # 主窗口
@@ -21,6 +22,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._client = client
         self.setWindowTitle('learning-neko')
+        self.setWindowIcon(build_app_icon())
         self.resize(1100, 760)
 
         # ① 建页面并放进堆栈

@@ -19,17 +19,17 @@ from desktop.workers import run_async
 
 # 报告区样式：白底黑字
 REPORT_STYLE = """
-body { background-color: #ffffff; color: #24292f; }
+body { background-color: #ffffff; color: #1f2937; }
 p { margin: 6px 0; }
-h1, h2, h3 { color: #24292f; }
-pre { background-color: #f6f8fa; padding: 8px; }
-code { background-color: #f6f8fa; color: #953800; }
-a { color: #0969da; }
+h1, h2, h3 { color: #1f2937; }
+pre { background-color: #f3f4f6; padding: 8px; }
+code { background-color: #f3f4f6; color: #b45309; }
+a { color: #6366f1; }
 table { border-collapse: collapse; margin: 8px 0; }
-th, td { border: 1px solid #d0d7de; padding: 4px 8px; }
-th { background-color: #f6f8fa; }
-blockquote { border-left: 3px solid #d0d7de; margin: 8px 0; padding-left: 12px; color: #57606a; }
-hr { border: none; border-top: 1px solid #d0d7de; }
+th, td { border: 1px solid #e5e7eb; padding: 4px 8px; }
+th { background-color: #f3f4f6; }
+blockquote { border-left: 3px solid #e5e7eb; margin: 8px 0; padding-left: 12px; color: #6b7280; }
+hr { border: none; border-top: 1px solid #e5e7eb; }
 """
 
 
